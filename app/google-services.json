@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "348771838600",
+    "project_id": "cannaapp-e4e8b",
+    "storage_bucket": "cannaapp-e4e8b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:348771838600:android:5e62941ebe30e281e3cd3d",
+        "android_client_info": {
+          "package_name": "cz.cannaclub.cannaapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCHsw0OibS2VCWYXyR3zlA7w8-FLtv8Fvo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
