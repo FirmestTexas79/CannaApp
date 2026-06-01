@@ -27,14 +27,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import cz.cannaclub.cannaapp.model.User
-import cz.cannaclub.cannaapp.ui.theme.Background
-import cz.cannaclub.cannaapp.ui.theme.BorderNormal
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
 import cz.cannaclub.cannaapp.ui.theme.Cream
 import cz.cannaclub.cannaapp.ui.theme.PointsRed
@@ -42,6 +41,7 @@ import cz.cannaclub.cannaapp.ui.theme.Sage
 import cz.cannaclub.cannaapp.ui.theme.SageGlow
 import cz.cannaclub.cannaapp.ui.theme.Surface
 import cz.cannaclub.cannaapp.ui.theme.TextMuted
+import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 
 @Composable
 fun EditPointsDialog(
@@ -55,11 +55,10 @@ fun EditPointsDialog(
         Column(
             modifier = Modifier
                 .clip(RoundedCornerShape(22.dp))
-                .background(Surface)
+                .background(Surface)    // tmavý dialog pozadí
                 .padding(26.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Titulek
             Text(
                 text  = user.name,
                 style = MaterialTheme.typography.headlineMedium,
@@ -74,7 +73,7 @@ fun EditPointsDialog(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Editor bodů — [ − ] [ číslo ] [ + ]
+            // Editor [ − ] [ číslo ] [ + ]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -83,30 +82,20 @@ fun EditPointsDialog(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Mínus
                 IconButton(
                     onClick  = { if (points > 0) points -= 10 },
                     modifier = Modifier
                         .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
-                        .background(
-                            androidx.compose.ui.graphics.Color(0x1AB45050)
-                        )
+                        .background(Color(0x1AB45050))
                         .padding(4.dp)
                 ) {
-                    Text(
-                        text     = "−",
-                        fontSize = 26.sp,
-                        color    = PointsRed
-                    )
+                    Text(text = "−", fontSize = 26.sp, color = PointsRed)
                 }
 
-                // Číselný input
                 OutlinedTextField(
                     value         = points.toString(),
                     onValueChange = { str ->
-                        str.toIntOrNull()?.let { v ->
-                            if (v >= 0) points = v
-                        }
+                        str.toIntOrNull()?.let { v -> if (v >= 0) points = v }
                     },
                     modifier  = Modifier.weight(1f),
                     textStyle = MaterialTheme.typography.headlineLarge.copy(
@@ -114,21 +103,18 @@ fun EditPointsDialog(
                         fontSize  = 38.sp
                     ),
                     singleLine      = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor      = androidx.compose.ui.graphics.Color.Transparent,
-                        unfocusedBorderColor    = androidx.compose.ui.graphics.Color.Transparent,
-                        focusedContainerColor   = androidx.compose.ui.graphics.Color.Transparent,
-                        unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
-                        focusedTextColor        = Cream,
-                        unfocusedTextColor      = Cream,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors          = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor      = Color.Transparent,
+                        unfocusedBorderColor    = Color.Transparent,
+                        focusedContainerColor   = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedTextColor        = TextPrimary,
+                        unfocusedTextColor      = TextPrimary,
                         cursorColor             = Sage
                     )
                 )
 
-                // Plus
                 IconButton(
                     onClick  = { points += 10 },
                     modifier = Modifier
@@ -136,26 +122,18 @@ fun EditPointsDialog(
                         .background(SageGlow)
                         .padding(4.dp)
                 ) {
-                    Text(
-                        text     = "+",
-                        fontSize = 26.sp,
-                        color    = Sage
-                    )
+                    Text(text = "+", fontSize = 26.sp, color = Sage)
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Tlačítka
             Row(modifier = Modifier.fillMaxWidth()) {
                 TextButton(
                     onClick  = onDismiss,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text  = "Zrušit",
-                        color = TextMuted
-                    )
+                    Text(text = "Zrušit", color = TextMuted)
                 }
 
                 Spacer(modifier = Modifier.width(10.dp))
@@ -166,13 +144,10 @@ fun EditPointsDialog(
                     shape    = RoundedCornerShape(12.dp),
                     colors   = ButtonDefaults.buttonColors(
                         containerColor = Sage,
-                        contentColor   = Background
+                        contentColor   = Color.White   // FIX: bílý text na zelené
                     )
                 ) {
-                    Text(
-                        text  = "Uložit",
-                        style = MaterialTheme.typography.labelLarge
-                    )
+                    Text(text = "Uložit", style = MaterialTheme.typography.labelLarge)
                 }
             }
         }

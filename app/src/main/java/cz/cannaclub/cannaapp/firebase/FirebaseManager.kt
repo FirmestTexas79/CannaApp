@@ -4,50 +4,45 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.PersistentCacheSettings
+import com.google.firebase.storage.FirebaseStorage
 
 object FirebaseManager {
 
-    // ── Firestore instance ────────────────────────────────
     val firestore: FirebaseFirestore by lazy {
         FirebaseFirestore.getInstance().also { db ->
-            // Offline persistence — appka funguje i bez internetu
-            // data se synchronizují jakmile se spojení obnoví
-            val cacheSettings = PersistentCacheSettings.newBuilder()
-                .setSizeBytes(50L * 1024 * 1024) // 50 MB cache
+            db.firestoreSettings = FirebaseFirestoreSettings.Builder()
+                .setLocalCacheSettings(
+                    PersistentCacheSettings.newBuilder()
+                        .setSizeBytes(50L * 1024 * 1024)
+                        .build()
+                )
                 .build()
-
-            val settings = FirebaseFirestoreSettings.Builder()
-                .setLocalCacheSettings(cacheSettings)
-                .build()
-
-            db.firestoreSettings = settings
         }
     }
 
-    // ── Auth instance ─────────────────────────────────────
-    val auth: FirebaseAuth by lazy {
-        FirebaseAuth.getInstance()
-    }
+    val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
 
-    // ── Kolekce — centrální definice názvů ────────────────
-    // Kdybychom chtěli přejmenovat kolekci, změníme jen zde
+    val storage: FirebaseStorage by lazy { FirebaseStorage.getInstance() }
+
     object Collections {
         const val USERS        = "users"
         const val ADMINS       = "admins"
         const val TRANSACTIONS = "transactions"
+        const val PRODUCTS     = "products"
     }
 
-    // ── Zkratky na kolekce ────────────────────────────────
     val usersCollection
         get() = firestore.collection(Collections.USERS)
 
     val adminsCollection
         get() = firestore.collection(Collections.ADMINS)
 
+    val productsCol
+        get() = firestore.collection(Collections.PRODUCTS)
+
     fun transactionsCollection(userId: String) =
         usersCollection.document(userId).collection(Collections.TRANSACTIONS)
 
-    // ── Aktuální přihlášený admin ─────────────────────────
     val currentAdminId: String?
         get() = auth.currentUser?.uid
 

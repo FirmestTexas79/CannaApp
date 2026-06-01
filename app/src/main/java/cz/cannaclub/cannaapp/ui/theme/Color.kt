@@ -2,33 +2,40 @@ package cz.cannaclub.cannaapp.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ── Pozadí — béžová jako jejich logo ─────────────────────
-val Background   = Color(0xFFF0E7DE)  // béžová z loga
-val Surface      = Color(0xFFE8E0D6)  // o stupeň tmavší
-val CardDefault  = Color(0xFFFFFFFF)  // bílé karty
-val CardHover    = Color(0xFFF5F0E8)  // hover stav
+// ── Pozadí uživatelských obrazovek — o tón tmavší než pill ───
+val Background      = Color(0xFFD9CEBC)   // teplá béžová — pozadí za pillem (user)
+val AdminBackground = Color(0xFF191007)   // tmavá hnědá — pozadí admin obrazovek
 
-// ── Bordery ───────────────────────────────────────────────
-val BorderNormal = Color(0xFFD4C9B8)
-val BorderSoft   = Color(0xFFE0D8CC)
+val Surface         = Color(0xFFEEE4CE)   // dialogy, sheety
+val PillBackground  = Color(0xFFF5EDD8)   // pill — původní teplá krémová
+val CardDefault     = Color(0xFFEBDFC6)   // karty uvnitř pillu
+val CardHover       = Color(0xFFE0D3B8)   // hover / stisknutý stav
 
-// ── Primární — jejich zemitá zelená ──────────────────────
-val Sage         = Color(0xFF4A6741)  // přesně jejich zelená z loga
-val SageDim      = Color(0xFF3A5232)  // tmavší
-val SageGlow     = Color(0x1A4A6741)  // průhledná (10%)
-val SageLight    = Color(0xFF6B8F61)  // světlejší varianta
+// ── Bordery ───────────────────────────────────────────────────
+val BorderNormal    = Color(0xFFCDBFA0)
+val BorderSoft      = Color(0xFFD8CCBA)
 
-// ── Akcenty ───────────────────────────────────────────────
-val Cream        = Color(0xFF2C2C2C)  // hlavní text — tmavý na béžovém pozadí
-val CreamDim     = Color(0xFF6B6560)
-val Gold         = Color(0xFFC8A84C)  // admin akcent
-val GoldDim      = Color(0x24C8A84C)
+// ── Primární — zelená značky ──────────────────────────────────
+val Sage            = Color(0xFF3E5E35)
+val SageDim         = Color(0xFF2E4A28)
+val SageGlow        = Color(0x2E3E5E35)
+val SageLight       = Color(0xFF5A7A50)
 
-// ── Stavové barvy ─────────────────────────────────────────
-val PointsRed    = Color(0xFFB85450)
-val PointsGreen  = Color(0xFF4A6741)
+// ── Akcenty ───────────────────────────────────────────────────
+val Cream           = Color(0xFF1C1207)   // tmavý titulek na světlém pillu
+val CreamDim        = Color(0xFF4A3C28)
+val Gold            = Color(0xFFA8841E)   // admin akcent
+val GoldDim         = Color(0x28A8841E)
 
-// ── Text ──────────────────────────────────────────────────
-val TextPrimary  = Color(0xFF1E1E1E)
-val TextMuted    = Color(0xFF8A8078)
-val TextFaint    = Color(0xFFB0A898)
+// ── Stavové barvy ─────────────────────────────────────────────
+val PointsRed       = Color(0xFF8B3A38)
+val PointsGreen     = Color(0xFF3E5E35)
+
+// ── Text ──────────────────────────────────────────────────────
+val TextPrimary     = Color(0xFF1C1207)
+val TextMuted       = Color(0xFF6B5A3E)
+val TextFaint       = Color(0xFF9A8B72)
+
+// ── Dekorativní prvky ─────────────────────────────────────────
+val LeafDecor       = Color(0xBB3E5E35)   // tmavě zelená — na světlém béžovém pozadí
+val LeafDecorAdmin  = Color(0x55F5EDD8)   // světlá krémová — na tmavém admin pozadí

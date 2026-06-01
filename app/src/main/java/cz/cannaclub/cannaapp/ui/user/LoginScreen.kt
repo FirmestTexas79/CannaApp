@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -51,10 +53,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import cz.cannaclub.cannaapp.R
+import cz.cannaclub.cannaapp.ui.components.DecorativePlants
 import cz.cannaclub.cannaapp.ui.theme.Background
 import cz.cannaclub.cannaapp.ui.theme.BorderNormal
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
-import cz.cannaclub.cannaapp.ui.theme.Cream
+import cz.cannaclub.cannaapp.ui.theme.PillBackground
 import cz.cannaclub.cannaapp.ui.theme.Sage
 import cz.cannaclub.cannaapp.ui.theme.SageDim
 import cz.cannaclub.cannaapp.ui.theme.SageGlow
@@ -64,13 +67,14 @@ import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 import cz.cannaclub.cannaapp.viewmodel.LoginState
 import cz.cannaclub.cannaapp.viewmodel.UserViewModel
 
+private val PillHorizontalPadding = 28.dp
+
 @Composable
 fun LoginScreen(
     viewModel: UserViewModel,
     onLoginSuccess: () -> Unit,
     onAdminClick: () -> Unit
 ) {
-    // Předvyplní z minulého přihlášení
     var name  by remember { mutableStateOf(viewModel.savedName) }
     var email by remember { mutableStateOf(viewModel.savedEmail) }
     var phone by remember { mutableStateOf(viewModel.savedPhone) }
@@ -93,141 +97,156 @@ fun LoginScreen(
         }
     }
 
+    // ── Vrstvené pozadí ───────────────────────────────────────
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(Background)   // tmavá vrstva za pillem
     ) {
-        Column(
+        // Vrstva 2: Botanické ozdoby — peeking zpoza pillu
+        DecorativePlants(modifier = Modifier.fillMaxSize())
+
+        // Vrstva 3: Pill — výška dle obsahu, vertikálně centrovaný
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 28.dp)
-                .imePadding(),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxWidth()
+                .align(Alignment.Center)
+                .padding(horizontal = PillHorizontalPadding)
+                .clip(RoundedCornerShape(32.dp))
+                .background(PillBackground)
         ) {
-            Spacer(modifier = Modifier.height(72.dp))
-
-            // ── Logo Cannaclub ────────────────────────────
-            AnimatedVisibility(
-                visible = true,
-                enter   = fadeIn() + slideInVertically { -40 }
-            ) {
-                Image(
-                    painter            = painterResource(id = R.drawable.cannalogo),
-                    contentDescription = "Cannaclub logo",
-                    modifier           = Modifier
-                        .fillMaxWidth(1f)
-                        .height(200.dp),
-                    contentScale       = ContentScale.Fit
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text  = "VĚRNOSTNÍ PROGRAM",
-                style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
-            )
-
-            Spacer(modifier = Modifier.height(40.dp))
-
-            // ── Pole ──────────────────────────────────────
-            CannaTextField(
-                value           = name,
-                onValueChange   = { name = it },
-                label           = "JMÉNO",
-                placeholder     = "Marry Jane",
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            CannaTextField(
-                value           = email,
-                onValueChange   = { email = it },
-                label           = "EMAIL",
-                placeholder     = "vas@email.cz",
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Email,
-                    imeAction    = ImeAction.Next
-                ),
-                keyboardActions = KeyboardActions(
-                    onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                )
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            CannaTextField(
-                value           = phone,
-                onValueChange   = { phone = it },
-                label           = "TELEFON",
-                placeholder     = "+420 666 420 911",
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Phone,
-                    imeAction    = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        focusManager.clearFocus()
-                        viewModel.loginUser(name, email, phone)
-                    }
-                )
-            )
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            Button(
-                onClick = {
-                    focusManager.clearFocus()
-                    viewModel.loginUser(name, email, phone)
-                },
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
-                shape  = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Sage,
-                    contentColor   = Color.White
-                ),
-                enabled = loginState !is LoginState.Loading
+                    .verticalScroll(rememberScrollState())
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 28.dp, vertical = 36.dp)
+                    .imePadding(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (loginState is LoginState.Loading) {
-                    CircularProgressIndicator(
-                        modifier    = Modifier.size(22.dp),
-                        color       = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(
-                        text  = "PŘIHLÁSIT SE",
-                        style = MaterialTheme.typography.labelLarge
+
+                // ── Logo Cannaclub ────────────────────────────
+                AnimatedVisibility(
+                    visible = true,
+                    enter   = fadeIn() + slideInVertically { -40 }
+                ) {
+                    Image(
+                        painter            = painterResource(id = R.drawable.cannalogo),
+                        contentDescription = "Cannaclub logo",
+                        modifier           = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(180.dp),
+                        contentScale       = ContentScale.Fit
                     )
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text  = "VĚRNOSTNÍ PROGRAM",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                )
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // ── Formulář ──────────────────────────────────
+                CannaTextField(
+                    value           = name,
+                    onValueChange   = { name = it },
+                    label           = "JMÉNO",
+                    placeholder     = "Marry Jane",
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                CannaTextField(
+                    value           = email,
+                    onValueChange   = { email = it },
+                    label           = "EMAIL",
+                    placeholder     = "vas@email.cz",
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Email,
+                        imeAction    = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                CannaTextField(
+                    value           = phone,
+                    onValueChange   = { phone = it },
+                    label           = "TELEFON",
+                    placeholder     = "+420 666 420 911",
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Phone,
+                        imeAction    = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            focusManager.clearFocus()
+                            viewModel.loginUser(name, email, phone)
+                        }
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                Button(
+                    onClick = {
+                        focusManager.clearFocus()
+                        viewModel.loginUser(name, email, phone)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape  = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Sage,
+                        contentColor   = Color.White
+                    ),
+                    enabled = loginState !is LoginState.Loading
+                ) {
+                    if (loginState is LoginState.Loading) {
+                        CircularProgressIndicator(
+                            modifier    = Modifier.size(22.dp),
+                            color       = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            text  = "PŘIHLÁSIT SE",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text  = "Přístup pro obsluhu →",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        textDecoration = TextDecoration.Underline
+                    ),
+                    color     = TextFaint,
+                    textAlign = TextAlign.Center,
+                    modifier  = Modifier
+                        .clickable { onAdminClick() }
+                        .padding(8.dp)
+                )
+
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text  = "Přístup pro obsluhu →",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    textDecoration = TextDecoration.Underline
-                ),
-                color     = TextFaint,
-                textAlign = TextAlign.Center,
-                modifier  = Modifier
-                    .clickable { onAdminClick() }
-                    .padding(8.dp)
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
 
+        // Snackbar mimo pill — full-width overlay
         SnackbarHost(
             hostState = snackbarHostState,
             modifier  = Modifier.align(Alignment.BottomCenter)
@@ -235,13 +254,17 @@ fun LoginScreen(
             Snackbar(
                 snackbarData   = data,
                 containerColor = CardDefault,
-                contentColor   = Cream,
-                shape          = RoundedCornerShape(12.dp)
+                contentColor   = TextPrimary,
+                shape          = RoundedCornerShape(12.dp),
+                modifier       = Modifier.padding(horizontal = PillHorizontalPadding + 8.dp)
             )
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────────
+// Textové pole — zelený focus, tmavé pozadí
+// ─────────────────────────────────────────────────────────────
 @Composable
 fun CannaTextField(
     value: String,

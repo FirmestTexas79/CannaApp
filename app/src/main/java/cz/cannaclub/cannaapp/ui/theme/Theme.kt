@@ -1,24 +1,27 @@
 package cz.cannaclub.cannaapp.ui.theme
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Světlé téma — béžové pozadí jako Cannaclub
-private val CannaColorScheme = lightColorScheme(
-    primary          = Sage,
-    onPrimary        = Color(0xFFF0EBE3),
-    secondary        = Gold,
-    onSecondary      = Color(0xFFF0EBE3),
-    background       = Background,
-    onBackground     = TextPrimary,
-    surface          = Surface,
-    onSurface        = TextPrimary,
-    surfaceVariant   = CardDefault,
-    onSurfaceVariant = TextMuted,
-    outline          = BorderNormal,
-    error            = PointsRed,
+// Tmavé téma — warm dark s Cannaclub branding
+private val CannaColorScheme = darkColorScheme(
+    primary             = Sage,
+    onPrimary           = Cream,
+    secondary           = Gold,
+    onSecondary         = Background,
+    background          = Background,
+    onBackground        = TextPrimary,
+    surface             = Surface,
+    onSurface           = TextPrimary,
+    surfaceVariant      = CardDefault,
+    onSurfaceVariant    = TextMuted,
+    outline             = BorderNormal,
+    error               = PointsRed,
+    onError             = Cream,
+    surfaceContainer    = PillBackground,
+    surfaceContainerHigh = CardDefault,
 )
 
 @Composable

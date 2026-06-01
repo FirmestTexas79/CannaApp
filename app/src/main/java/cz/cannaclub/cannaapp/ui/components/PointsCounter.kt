@@ -24,11 +24,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cz.cannaclub.cannaapp.ui.theme.BorderNormal
+import cz.cannaclub.cannaapp.ui.theme.CardDefault
 import cz.cannaclub.cannaapp.ui.theme.Sage
 import cz.cannaclub.cannaapp.ui.theme.SageDim
 import cz.cannaclub.cannaapp.ui.theme.SageGlow
@@ -59,9 +58,9 @@ fun PointsCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(Color.White)
+            .background(CardDefault)   // tmavá karta (CardDefault = #252521)
     ) {
-        // Zelený top border
+        // Zelený top border — gradient, zachován z původního designu
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -105,7 +104,7 @@ fun PointsCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Animovaný counter
+            // Animovaný counter — Playfair Display, sage zelená
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text  = animatedValue.value.roundToInt().toString(),
@@ -120,7 +119,6 @@ fun PointsCard(
                     text     = "b",
                     style    = MaterialTheme.typography.bodyLarge.copy(
                         fontSize  = 22.sp,
-                        fontStyle = FontStyle.Italic
                     ),
                     color    = SageDim,
                     modifier = Modifier.padding(bottom = 10.dp)

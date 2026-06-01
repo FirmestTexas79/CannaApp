@@ -17,23 +17,38 @@ class UserRepository {
     private fun txCol(uid: String) = FirebaseManager.transactionsCollection(uid)
 
     // ─────────────────────────────────────────────────────
-    // USER AUTH — hledá podle jména + emailu + telefonu
+    // USER AUTH
+    //
+    // FIX: Původní trojitý compound query (name + email + phone) vyžadoval
+    // composite index na Firestore, který musí být explicitně definován
+    // v firestore.indexes.json — bez něj query selže na větší kolekci.
+    //
+    // Nové řešení: dotazujeme pouze podle emailu (unikátní pole, jeden index)
+    // a jméno + telefon ověřujeme client-side. Telefon porovnáváme bez mezer
+    // pro robustnost (+420 666 420 911 == +420666420911).
     // ─────────────────────────────────────────────────────
 
     suspend fun loginUser(name: String, email: String, phone: String): User? {
         return try {
             val snapshot = usersCol
-                .whereEqualTo("name", name)
-                .whereEqualTo("email", email)
-                .whereEqualTo("phone", phone)
-                .limit(1)
+                .whereEqualTo("email", email.trim().lowercase())
+                .limit(5) // defensive limit pro případ duplicit
                 .get()
                 .await()
 
-            if (snapshot.isEmpty) null
-            else {
-                val doc = snapshot.documents.first()
-                doc.toObject(User::class.java)?.copy(id = doc.id)
+            if (snapshot.isEmpty) return null
+
+            // Client-side ověření jména a telefonu
+            val normalizedPhone = phone.replace(Regex("\\s+"), "")
+
+            snapshot.documents.firstNotNullOfOrNull { doc ->
+                val user = doc.toObject(User::class.java)?.copy(id = doc.id)
+                    ?: return@firstNotNullOfOrNull null
+
+                val nameMatch  = user.name.trim().equals(name.trim(), ignoreCase = true)
+                val phoneMatch = user.phone.replace(Regex("\\s+"), "") == normalizedPhone
+
+                if (nameMatch && phoneMatch) user else null
             }
         } catch (e: Exception) {
             null
@@ -98,7 +113,7 @@ class UserRepository {
     }
 
     // ─────────────────────────────────────────────────────
-    // BODY — úprava adminem
+    // BODY — úprava adminem (atomic batch)
     // ─────────────────────────────────────────────────────
 
     suspend fun updatePoints(
@@ -141,7 +156,7 @@ class UserRepository {
         return try {
             val user = User(
                 name   = name,
-                email  = email,
+                email  = email.trim().lowercase(),
                 phone  = phone,
                 points = initialPoints
             )

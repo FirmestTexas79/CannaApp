@@ -2,71 +2,33 @@ package cz.cannaclub.cannaapp.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
 import cz.cannaclub.cannaapp.R
 
-// ── Google Fonts provider ─────────────────────────────────
-private val provider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage   = "com.google.android.gms",
-    certificates      = R.array.com_google_android_gms_fonts_certs
+// ── 1. Fredoka ─────────────────────────────────────────────────────────────────────
+private val fredokaFamily = FontFamily(
+    Font(resId = R.font.fredoka_semibold, weight = FontWeight.SemiBold)
 )
 
-// ── Playfair Display — titulky, counter bodů ──────────────
+// ── 2. Playfair Display ────────────────────────────────────────────────────────────
 private val playfairFamily = FontFamily(
-    Font(
-        googleFont = GoogleFont("Playfair Display"),
-        fontProvider = provider,
-        weight = FontWeight.Normal
-    ),
-    Font(
-        googleFont = GoogleFont("Playfair Display"),
-        fontProvider = provider,
-        weight = FontWeight.SemiBold
-    ),
-    Font(
-        googleFont = GoogleFont("Playfair Display"),
-        fontProvider = provider,
-        weight = FontWeight.Bold
-    ),
-    Font(
-        googleFont = GoogleFont("Playfair Display"),
-        fontProvider = provider,
-        weight = FontWeight.Normal,
-        style = FontStyle.Italic
-    )
+    Font(resId = R.font.playfair_display, weight = FontWeight.Normal),
+    Font(resId = R.font.playfair_display, weight = FontWeight.SemiBold),
+    Font(resId = R.font.playfair_display, weight = FontWeight.Bold)
 )
 
-// ── DM Sans — tělo, labely, tlačítka ─────────────────────
+// ── 3. DM Sans ─────────────────────────────────────────────────────────────────────
 private val dmSansFamily = FontFamily(
-    Font(
-        googleFont = GoogleFont("DM Sans"),
-        fontProvider = provider,
-        weight = FontWeight.Light
-    ),
-    Font(
-        googleFont = GoogleFont("DM Sans"),
-        fontProvider = provider,
-        weight = FontWeight.Normal
-    ),
-    Font(
-        googleFont = GoogleFont("DM Sans"),
-        fontProvider = provider,
-        weight = FontWeight.Medium
-    ),
-    Font(
-        googleFont = GoogleFont("DM Sans"),
-        fontProvider = provider,
-        weight = FontWeight.SemiBold
-    )
+    Font(resId = R.font.dm_sans, weight = FontWeight.Light),
+    Font(resId = R.font.dm_sans, weight = FontWeight.Normal),
+    Font(resId = R.font.dm_sans, weight = FontWeight.Medium),
+    Font(resId = R.font.dm_sans, weight = FontWeight.SemiBold)
 )
 
-// ── Typography ────────────────────────────────────────────
+// ── Typography ─────────────────────────────────────────────────────────────────────
 val CannaTypography = Typography(
 
     // Velký titulek — název appky, jméno zákazníka
@@ -95,12 +57,20 @@ val CannaTypography = Typography(
         lineHeight = 34.sp
     ),
 
-    // Popup titulky
+    // Název produktu v detailu popupu (Fredoka)
     headlineMedium = TextStyle(
-        fontFamily = playfairFamily,
+        fontFamily = fredokaFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize   = 24.sp,
         lineHeight = 30.sp
+    ),
+
+    // Název produktu v ProductCard kartě (Fredoka)
+    titleLarge = TextStyle(
+        fontFamily = fredokaFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize   = 22.sp,
+        lineHeight = 28.sp
     ),
 
     // Jméno v pillce, název transakce
@@ -114,7 +84,7 @@ val CannaTypography = Typography(
     // Běžný text, email, popis
     bodyMedium = TextStyle(
         fontFamily = dmSansFamily,
-        fontWeight = FontWeight.Light,
+        fontWeight = FontWeight.Normal,
         fontSize   = 14.sp,
         lineHeight = 20.sp
     ),

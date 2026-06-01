@@ -28,6 +28,10 @@ import cz.cannaclub.cannaapp.ui.theme.Cream
 import cz.cannaclub.cannaapp.ui.theme.Sage
 import cz.cannaclub.cannaapp.ui.theme.TextMuted
 
+/**
+ * Sdílená pill komponenta pro zákazníka — používána jak v admin seznamu,
+ * tak případně v zákaznickém flow. Kanonická verze, bez duplicit.
+ */
 @Composable
 fun UserPillComponent(
     user: User,
@@ -43,10 +47,10 @@ fun UserPillComponent(
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar
+        // Avatar s iniciálami
         Box(
             modifier = Modifier
-                .size(42.dp)
+                .size(44.dp)
                 .clip(CircleShape)
                 .background(CardHover),
             contentAlignment = Alignment.Center
