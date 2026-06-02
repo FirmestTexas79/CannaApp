@@ -49,6 +49,8 @@ import cz.cannaclub.cannaapp.model.Transaction
 import cz.cannaclub.cannaapp.model.TransactionType
 import cz.cannaclub.cannaapp.ui.components.DecorativePlants
 import cz.cannaclub.cannaapp.ui.components.PointsCard
+import cz.cannaclub.cannaapp.ui.components.QrCodeCard
+import cz.cannaclub.cannaapp.ui.components.WoltCard
 import cz.cannaclub.cannaapp.ui.theme.Background
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
 import cz.cannaclub.cannaapp.ui.theme.Cream
@@ -142,6 +144,18 @@ fun DashboardScreen(
                                 style = MaterialTheme.typography.headlineLarge,
                                 color = Cream
                             )
+                            user?.rank?.let { rank ->
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text     = "${rank.icon} ${rank.label}",
+                                    style    = MaterialTheme.typography.labelSmall,
+                                    color    = Sage,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(SageGlow)
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
                         }
                         IconButton(onClick = onLogout) {
                             Text(text = "←", fontSize = 22.sp, color = TextMuted)
@@ -157,6 +171,19 @@ fun DashboardScreen(
                         onRewardsClick = { showRewards = true }
                     )
                     Spacer(modifier = Modifier.height(24.dp))
+                }
+
+                item {
+                    user?.id?.let { userId ->
+                        QrCodeCard(userId = userId)
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+
+                // Za QR kód item přidej:
+                item {
+                    WoltCard()
+                    Spacer(modifier = Modifier.height(20.dp))
                 }
 
                 // ── Tlačítko Naše zeleň — výrazné, centrované ─
@@ -229,9 +256,13 @@ fun DashboardScreen(
                 onDismissRequest = { showRewards = false },
                 sheetState       = sheetState,
                 containerColor   = Surface,
-                shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+                shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                modifier         = Modifier.fillMaxSize()  // ← přidej toto
             ) {
-                RewardsSheet(currentPoints = user?.points ?: 0)
+                RewardsSheet(
+                    currentPoints = user?.points ?: 0,
+                    totalPoints   = user?.totalPoints ?: 0
+                )
             }
         }
     }

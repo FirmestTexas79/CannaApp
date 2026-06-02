@@ -1,8 +1,10 @@
 package cz.cannaclub.cannaapp.ui.admin
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,7 +21,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -40,13 +41,12 @@ import androidx.compose.ui.unit.sp
 import cz.cannaclub.cannaapp.model.User
 import cz.cannaclub.cannaapp.ui.components.DecorativePlants
 import cz.cannaclub.cannaapp.ui.components.UserPillComponent
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
 import cz.cannaclub.cannaapp.ui.theme.AdminBackground
 import cz.cannaclub.cannaapp.ui.theme.Background
 import cz.cannaclub.cannaapp.ui.theme.BorderNormal
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
 import cz.cannaclub.cannaapp.ui.theme.Gold
+import cz.cannaclub.cannaapp.ui.theme.GoldDim
 import cz.cannaclub.cannaapp.ui.theme.LeafDecorAdmin
 import cz.cannaclub.cannaapp.ui.theme.PillBackground
 import cz.cannaclub.cannaapp.ui.theme.TextFaint
@@ -67,11 +67,14 @@ fun AdminListScreen(
     val users        by viewModel.filteredUsers.collectAsState()
     val searchQuery  by viewModel.searchQuery.collectAsState()
     val opState      by viewModel.operationState.collectAsState()
+    val scannedUser  by viewModel.scannedUser.collectAsState()
 
     var selectedUser  by remember { mutableStateOf<User?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var showScanner   by remember { mutableStateOf(false) }
     val snackbarState = remember { SnackbarHostState() }
 
+    // ── Reakce na operace ─────────────────────────────────
     LaunchedEffect(opState) {
         when (val state = opState) {
             is OperationState.Success -> {
@@ -86,16 +89,21 @@ fun AdminListScreen(
         }
     }
 
-    // ── Vrstvené pozadí (stejný pattern jako ostatní obrazovky) ──
+    // ── Reakce na QR skenování — otevře dialog zákazníka ──
+    LaunchedEffect(scannedUser) {
+        scannedUser?.let {
+            selectedUser = it
+            viewModel.clearScannedUser()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(AdminBackground)
     ) {
-        // Vrstva 2: Světlé listy na tmavém admin pozadí
         DecorativePlants(modifier = Modifier.fillMaxSize(), color = LeafDecorAdmin)
 
-        // Vrstva 3: Pill — obsah admin seznamu
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -111,11 +119,11 @@ fun AdminListScreen(
                     .padding(horizontal = 22.dp)
             ) {
 
-                // ── Hlavička ──────────────────────────────────────
+                // ── Hlavička ──────────────────────────────
                 item {
                     Spacer(modifier = Modifier.height(36.dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier              = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment     = Alignment.Bottom
                     ) {
@@ -134,36 +142,54 @@ fun AdminListScreen(
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // ── Searchbar ─────────────────────────────────────
+                // ── Searchbar + Skener ────────────────────
                 item {
-                    OutlinedTextField(
-                        value         = searchQuery,
-                        onValueChange = { viewModel.onSearchQueryChange(it) },
-                        modifier      = Modifier.fillMaxWidth(),
-                        placeholder   = {
-                            Text(
-                                text  = "⌕  Hledat zákazníka…",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextFaint
+                    Row(
+                        modifier              = Modifier.fillMaxWidth(),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value         = searchQuery,
+                            onValueChange = { viewModel.onSearchQueryChange(it) },
+                            modifier      = Modifier.weight(1f),
+                            placeholder   = {
+                                Text(
+                                    text  = "⌕  Hledat zákazníka…",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextFaint
+                                )
+                            },
+                            textStyle  = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
+                            singleLine = true,
+                            shape      = RoundedCornerShape(14.dp),
+                            colors     = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor      = Gold,
+                                unfocusedBorderColor    = BorderNormal,
+                                focusedContainerColor   = CardDefault,
+                                unfocusedContainerColor = CardDefault,
+                                cursorColor             = Gold,
+                                focusedTextColor        = TextPrimary,
+                                unfocusedTextColor      = TextPrimary
                             )
-                        },
-                        textStyle  = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
-                        singleLine = true,
-                        shape      = RoundedCornerShape(14.dp),
-                        colors     = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor      = Gold,
-                            unfocusedBorderColor    = BorderNormal,
-                            focusedContainerColor   = CardDefault,
-                            unfocusedContainerColor = CardDefault,
-                            cursorColor             = Gold,
-                            focusedTextColor        = TextPrimary,
-                            unfocusedTextColor      = TextPrimary
                         )
-                    )
+
+                        // Tlačítko skeneru
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(GoldDim)
+                                .clickable { showScanner = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "📷", fontSize = 24.sp)
+                        }
+                    }
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // ── Seznam zákazníků ──────────────────────────────
+                // ── Seznam zákazníků ──────────────────────
                 if (users.isEmpty()) {
                     item {
                         Text(
@@ -187,7 +213,7 @@ fun AdminListScreen(
                     }
                 }
 
-                // ── Naše zeleň ───────────────────────────────────
+                // ── Správa produktů ───────────────────────
                 item {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
@@ -197,7 +223,7 @@ fun AdminListScreen(
                             .background(CardDefault)
                             .clickable { onProductsClick() }
                             .padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment     = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
@@ -224,7 +250,7 @@ fun AdminListScreen(
             }
         }
 
-        // ── FAB mimo pill — zlatý, plovoucí nad pillem ────────────
+        // ── FAB ───────────────────────────────────────────
         FloatingActionButton(
             onClick        = { showAddDialog = true },
             shape          = RoundedCornerShape(17.dp),
@@ -238,7 +264,7 @@ fun AdminListScreen(
             Text(text = "+", fontSize = 28.sp, color = Background)
         }
 
-        // ── Snackbar ──────────────────────────────────────────────
+        // ── Snackbar ──────────────────────────────────────
         SnackbarHost(
             hostState = snackbarState,
             modifier  = Modifier.align(Alignment.BottomCenter)
@@ -253,7 +279,19 @@ fun AdminListScreen(
         }
     }
 
-    // ── Edit points dialog ────────────────────────────────────────
+    // ── QR Skener ─────────────────────────────────────────
+    if (showScanner) {
+        QrScannerDialog(
+            onDismiss = { showScanner = false },
+            onScanned = { scannedUserId ->
+                showScanner = false
+                // Hledá přímo ve Firestore — spolehlivější než lokální seznam
+                viewModel.findUserByQrCode(scannedUserId)
+            }
+        )
+    }
+
+    // ── Edit dialog ───────────────────────────────────────
     selectedUser?.let { user ->
         EditPointsDialog(
             user      = user,
@@ -265,7 +303,7 @@ fun AdminListScreen(
         )
     }
 
-    // ── Add user dialog ───────────────────────────────────────────
+    // ── Add dialog ────────────────────────────────────────
     if (showAddDialog) {
         AddUserDialog(
             onDismiss = { showAddDialog = false },

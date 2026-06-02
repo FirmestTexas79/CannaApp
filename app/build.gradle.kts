@@ -68,4 +68,18 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("com.google.firebase:firebase-storage-ktx")
+
+    // QR kód generování
+    implementation("io.github.g0dkar:qrcode-kotlin-android:4.1.1")
+
+// Kamera + skenování QR
+    implementation("androidx.camera:camera-camera2:1.3.4")
+    implementation("androidx.camera:camera-lifecycle:1.3.4")
+    implementation("androidx.camera:camera-view:1.3.4")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
+    implementation("com.google.guava:guava:33.0.0-android")
+
+
+    implementation(libs.accompanist.permissions)
 }

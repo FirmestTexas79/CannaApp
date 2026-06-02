@@ -9,8 +9,6 @@ import kotlinx.coroutines.tasks.await
 
 class ProductRepository {
 
-    // ── Seed produkty — fixní ID, vždy se přepíší při spuštění ──────
-    // Změna textu/pořadí v kódu se hned projeví i ve Firebase.
     private val seedProducts = listOf(
         Product(
             id          = "seed_lemon_haze",
@@ -46,7 +44,6 @@ class ProductRepository {
         )
     )
 
-    // ── Real-time stream produktů z Firestore ─────────────────────
     fun getProductsFlow(): Flow<List<Product>> = callbackFlow {
         val listener = FirebaseManager.productsCol
             .orderBy("orderIndex")
@@ -60,20 +57,23 @@ class ProductRepository {
         awaitClose { listener.remove() }
     }
 
-    // ── Seed — vždy přepíše seed produkty (fixní ID) ─────────────
-    // Admin-přidané produkty (jiná ID) zůstanou nedotčeny.
     suspend fun seedProducts() {
         seedProducts.forEach { product ->
             FirebaseManager.productsCol.document(product.id).set(product).await()
         }
     }
 
-    // ── CRUD ──────────────────────────────────────────────────────
+    // ── OPRAVA: používáme ID z produktu — stejné ID pro Firestore i Storage ──
     suspend fun addProduct(product: Product): String {
-        val docRef = FirebaseManager.productsCol.document()
-        val finalProduct = product.copy(id = docRef.id)
-        docRef.set(finalProduct).await()
-        return docRef.id
+        // Pokud produkt nemá ID, vygenerujeme nové — jinak použijeme stávající
+        val finalId = if (product.id.isBlank()) {
+            FirebaseManager.productsCol.document().id
+        } else {
+            product.id
+        }
+        val finalProduct = product.copy(id = finalId)
+        FirebaseManager.productsCol.document(finalId).set(finalProduct).await()
+        return finalId
     }
 
     suspend fun updateProduct(product: Product) {
@@ -87,7 +87,7 @@ class ProductRepository {
         } catch (_: Exception) {}
     }
 
-    // ── Upload obrázku do Firebase Storage (ByteArray) ───────────
+    // ── Upload — ID je vždy stejné jako v Firestore ───────────────
     suspend fun uploadProductImage(imageBytes: ByteArray, productId: String): String {
         val storageRef = FirebaseManager.storage.reference
             .child("products/$productId.jpg")

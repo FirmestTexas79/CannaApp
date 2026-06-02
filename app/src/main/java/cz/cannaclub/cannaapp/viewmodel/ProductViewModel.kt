@@ -65,21 +65,22 @@ class ProductViewModel : ViewModel() {
         viewModelScope.launch {
             _opState.value = ProductOperationState.Loading
             try {
-                val id = repository.addProduct(product)
-
-                val withUrl = if (imageUri != null) {
+                // Nejdřív nahraj obrázek pokud existuje — ID je už známé z dialogu
+                val finalProduct = if (imageUri != null) {
                     val bytes = readBytesFromUri(context, imageUri)
                     if (bytes != null) {
-                        val url = repository.uploadProductImage(bytes, id)
-                        product.copy(id = id, imageUrl = url)
+                        // Nahraj obrázek pod stejným ID jako produkt
+                        val url = repository.uploadProductImage(bytes, product.id)
+                        product.copy(imageUrl = url)
                     } else {
-                        product.copy(id = id)
+                        product
                     }
                 } else {
-                    product.copy(id = id)
+                    product
                 }
 
-                repository.updateProduct(withUrl)
+                // Ulož produkt s imageUrl do Firestore
+                repository.addProduct(finalProduct)
                 _opState.value = ProductOperationState.Success("Produkt přidán")
             } catch (e: Exception) {
                 e.printStackTrace()

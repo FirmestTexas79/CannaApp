@@ -16,38 +16,23 @@ class UserRepository {
     private val usersCol = FirebaseManager.usersCollection
     private fun txCol(uid: String) = FirebaseManager.transactionsCollection(uid)
 
-    // ─────────────────────────────────────────────────────
-    // USER AUTH
-    //
-    // FIX: Původní trojitý compound query (name + email + phone) vyžadoval
-    // composite index na Firestore, který musí být explicitně definován
-    // v firestore.indexes.json — bez něj query selže na větší kolekci.
-    //
-    // Nové řešení: dotazujeme pouze podle emailu (unikátní pole, jeden index)
-    // a jméno + telefon ověřujeme client-side. Telefon porovnáváme bez mezer
-    // pro robustnost (+420 666 420 911 == +420666420911).
-    // ─────────────────────────────────────────────────────
-
     suspend fun loginUser(name: String, email: String, phone: String): User? {
         return try {
             val snapshot = usersCol
                 .whereEqualTo("email", email.trim().lowercase())
-                .limit(5) // defensive limit pro případ duplicit
+                .limit(5)
                 .get()
                 .await()
 
             if (snapshot.isEmpty) return null
 
-            // Client-side ověření jména a telefonu
             val normalizedPhone = phone.replace(Regex("\\s+"), "")
 
             snapshot.documents.firstNotNullOfOrNull { doc ->
                 val user = doc.toObject(User::class.java)?.copy(id = doc.id)
                     ?: return@firstNotNullOfOrNull null
-
                 val nameMatch  = user.name.trim().equals(name.trim(), ignoreCase = true)
                 val phoneMatch = user.phone.replace(Regex("\\s+"), "") == normalizedPhone
-
                 if (nameMatch && phoneMatch) user else null
             }
         } catch (e: Exception) {
@@ -55,31 +40,18 @@ class UserRepository {
         }
     }
 
-    // ─────────────────────────────────────────────────────
-    // ADMIN AUTH
-    // ─────────────────────────────────────────────────────
-
     suspend fun loginAdmin(email: String, password: String): Boolean {
         return try {
             auth.signInWithEmailAndPassword(email, password).await()
             val uid = auth.currentUser?.uid ?: return false
-            val adminDoc = FirebaseManager.adminsCollection
-                .document(uid)
-                .get()
-                .await()
+            val adminDoc = FirebaseManager.adminsCollection.document(uid).get().await()
             adminDoc.exists()
         } catch (e: Exception) {
             false
         }
     }
 
-    fun logoutAdmin() {
-        auth.signOut()
-    }
-
-    // ─────────────────────────────────────────────────────
-    // USERS — real-time stream pro admin seznam
-    // ─────────────────────────────────────────────────────
+    fun logoutAdmin() { auth.signOut() }
 
     fun getAllUsersFlow(): Flow<List<User>> = callbackFlow {
         val listener = usersCol
@@ -94,9 +66,12 @@ class UserRepository {
         awaitClose { listener.remove() }
     }
 
-    // ─────────────────────────────────────────────────────
-    // TRANSACTIONS — posledních 10 pro dashboard
-    // ─────────────────────────────────────────────────────
+    suspend fun getUserById(userId: String): User? {
+        return try {
+            val doc = usersCol.document(userId).get().await()
+            if (doc.exists()) doc.toObject(User::class.java)?.copy(id = doc.id) else null
+        } catch (e: Exception) { null }
+    }
 
     fun getTransactionsFlow(userId: String): Flow<List<Transaction>> = callbackFlow {
         val listener = txCol(userId)
@@ -113,21 +88,31 @@ class UserRepository {
     }
 
     // ─────────────────────────────────────────────────────
-    // BODY — úprava adminem (atomic batch)
+    // BODY — aktualizuje points (zůstatek) i totalPoints (celkové)
+    // totalPoints se nikdy nesnižuje — základ pro rank
     // ─────────────────────────────────────────────────────
-
     suspend fun updatePoints(
         userId: String,
         oldPoints: Int,
         newPoints: Int,
+        oldTotalPoints: Int,
         reason: String = "Úprava obsluhou"
     ): Boolean {
         return try {
             val diff = newPoints - oldPoints
             val type = if (diff >= 0) TransactionType.ADD else TransactionType.SUBTRACT
 
+            // totalPoints se zvyšuje jen při přičítání — nikdy neklesá
+            val newTotal = if (diff > 0) oldTotalPoints + diff else oldTotalPoints
+
             FirebaseManager.firestore.runBatch { batch ->
-                batch.update(usersCol.document(userId), "points", newPoints)
+                batch.update(
+                    usersCol.document(userId),
+                    mapOf(
+                        "points"      to newPoints,
+                        "totalPoints" to newTotal
+                    )
+                )
                 val txRef = txCol(userId).document()
                 val transaction = Transaction(
                     id     = txRef.id,
@@ -143,10 +128,6 @@ class UserRepository {
         }
     }
 
-    // ─────────────────────────────────────────────────────
-    // PŘIDÁNÍ UŽIVATELE — admin
-    // ─────────────────────────────────────────────────────
-
     suspend fun addUser(
         name: String,
         email: String,
@@ -155,10 +136,11 @@ class UserRepository {
     ): Boolean {
         return try {
             val user = User(
-                name   = name,
-                email  = email.trim().lowercase(),
-                phone  = phone,
-                points = initialPoints
+                name        = name,
+                email       = email.trim().lowercase(),
+                phone       = phone,
+                points      = initialPoints,
+                totalPoints = initialPoints
             )
             usersCol.add(user).await()
             true

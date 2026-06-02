@@ -142,12 +142,12 @@ fun PointsCard(
                 verticalAlignment     = Alignment.CenterVertically
             ) {
                 Text(
-                    text  = "Hodnota slevy",
+                    text  = "Hodnota slevy  (1 b = 10 Kč)",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
                 Text(
-                    text  = "$points Kč",
+                    text  = "${points * 10} Kč",
                     style = MaterialTheme.typography.bodyLarge,
                     color = TextPrimary
                 )

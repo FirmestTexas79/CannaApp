@@ -14,27 +14,25 @@ class AdminViewModel(
     private val repository: UserRepository = UserRepository()
 ) : ViewModel() {
 
-    // ── Seznam všech uživatelů (real-time) ────────────────
     private val _allUsers = MutableStateFlow<List<User>>(emptyList())
 
-    // ── Vyhledávací dotaz ─────────────────────────────────
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    // ── Filtrovaný seznam — kombinuje users + query ────────
     private val _filteredUsers = MutableStateFlow<List<User>>(emptyList())
     val filteredUsers: StateFlow<List<User>> = _filteredUsers.asStateFlow()
 
-    // ── Stav admin přihlášení ─────────────────────────────
     private val _loginState = MutableStateFlow<AdminLoginState>(AdminLoginState.Idle)
     val loginState: StateFlow<AdminLoginState> = _loginState.asStateFlow()
 
-    // ── Stav operací (uložení bodů, přidání usera) ────────
     private val _operationState = MutableStateFlow<OperationState>(OperationState.Idle)
     val operationState: StateFlow<OperationState> = _operationState.asStateFlow()
 
+    // ── Zákazník nalezený přes QR skenování ──────────────
+    private val _scannedUser = MutableStateFlow<User?>(null)
+    val scannedUser: StateFlow<User?> = _scannedUser.asStateFlow()
+
     init {
-        // Kdykoli se změní users nebo searchQuery → přepočítej filteredUsers
         viewModelScope.launch {
             combine(_allUsers, _searchQuery) { users, query ->
                 if (query.isBlank()) users
@@ -64,7 +62,6 @@ class AdminViewModel(
             val success = repository.loginAdmin(email, password)
 
             if (success) {
-                // Po přihlášení spustí real-time stream uživatelů
                 loadUsers()
                 _loginState.value = AdminLoginState.Success
             } else {
@@ -73,9 +70,6 @@ class AdminViewModel(
         }
     }
 
-    // ─────────────────────────────────────────────────────
-    // Načte uživatele — real-time listener
-    // ─────────────────────────────────────────────────────
     private fun loadUsers() {
         viewModelScope.launch {
             repository.getAllUsersFlow().collect { users ->
@@ -84,15 +78,31 @@ class AdminViewModel(
         }
     }
 
-    // ─────────────────────────────────────────────────────
-    // Aktualizuje vyhledávací dotaz
-    // ─────────────────────────────────────────────────────
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
     }
 
     // ─────────────────────────────────────────────────────
-    // Uloží nový počet bodů pro zákazníka
+    // QR skenování — hledá zákazníka přímo ve Firestore
+    // Funguje i když seznam ještě není načtený
+    // ─────────────────────────────────────────────────────
+    fun findUserByQrCode(userId: String) {
+        viewModelScope.launch {
+            val user = repository.getUserById(userId)
+            if (user != null) {
+                _scannedUser.value = user
+            } else {
+                _operationState.value = OperationState.Error("Zákazník nenalezen")
+            }
+        }
+    }
+
+    fun clearScannedUser() {
+        _scannedUser.value = null
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Úprava bodů
     // ─────────────────────────────────────────────────────
     fun updatePoints(user: User, newPoints: Int) {
         if (newPoints < 0) {
@@ -104,9 +114,10 @@ class AdminViewModel(
             _operationState.value = OperationState.Loading
 
             val success = repository.updatePoints(
-                userId    = user.id,
-                oldPoints = user.points,
-                newPoints = newPoints
+                userId         = user.id,
+                oldPoints      = user.points,
+                newPoints      = newPoints,
+                oldTotalPoints = user.totalPoints
             )
 
             _operationState.value = if (success) {
@@ -118,7 +129,7 @@ class AdminViewModel(
     }
 
     // ─────────────────────────────────────────────────────
-    // Přidá nového zákazníka
+    // Přidání zákazníka
     // ─────────────────────────────────────────────────────
     fun addUser(name: String, email: String, phone: String, initialPoints: Int) {
         if (name.isBlank() || email.isBlank() || phone.isBlank()) {
@@ -143,15 +154,16 @@ class AdminViewModel(
         }
     }
 
-    // ─────────────────────────────────────────────────────
-    // Reset stavů
-    // ─────────────────────────────────────────────────────
     fun resetOperationState() {
         _operationState.value = OperationState.Idle
     }
 
     fun resetLoginState() {
         _loginState.value = AdminLoginState.Idle
+    }
+
+    fun setError(message: String) {
+        _operationState.value = OperationState.Error(message)
     }
 
     fun logout() {
@@ -161,7 +173,6 @@ class AdminViewModel(
     }
 }
 
-// Stavy admin přihlášení
 sealed class AdminLoginState {
     object Idle    : AdminLoginState()
     object Loading : AdminLoginState()
@@ -169,7 +180,6 @@ sealed class AdminLoginState {
     data class Error(val message: String) : AdminLoginState()
 }
 
-// Stavy operací (update bodů, přidání usera)
 sealed class OperationState {
     object Idle    : OperationState()
     object Loading : OperationState()

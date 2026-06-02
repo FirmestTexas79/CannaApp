@@ -1,19 +1,24 @@
 package cz.cannaclub.cannaapp.ui.admin
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -34,12 +39,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import cz.cannaclub.cannaapp.model.User
+import cz.cannaclub.cannaapp.ui.theme.BorderNormal
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
-import cz.cannaclub.cannaapp.ui.theme.Cream
+import cz.cannaclub.cannaapp.ui.theme.Gold
+import cz.cannaclub.cannaapp.ui.theme.GoldDim
+import cz.cannaclub.cannaapp.ui.theme.PillBackground
 import cz.cannaclub.cannaapp.ui.theme.PointsRed
 import cz.cannaclub.cannaapp.ui.theme.Sage
+import cz.cannaclub.cannaapp.ui.theme.SageDim
 import cz.cannaclub.cannaapp.ui.theme.SageGlow
-import cz.cannaclub.cannaapp.ui.theme.Surface
 import cz.cannaclub.cannaapp.ui.theme.TextMuted
 import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 
@@ -54,53 +62,141 @@ fun EditPointsDialog(
     Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(22.dp))
-                .background(Surface)    // tmavý dialog pozadí
-                .padding(26.dp),
+                .clip(RoundedCornerShape(24.dp))
+                .background(PillBackground)
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text  = user.name,
-                style = MaterialTheme.typography.headlineMedium,
-                color = Cream
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text  = "Úprava bodového zůstatku",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextMuted
-            )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // ── Hlavička — info o zákazníkovi ─────────────
+            Row(
+                modifier          = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Avatar
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(SageGlow)
+                        .border(1.dp, Sage.copy(alpha = 0.3f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text  = user.initials,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Sage
+                    )
+                }
 
-            // Editor [ − ] [ číslo ] [ + ]
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text  = user.name,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text  = user.email,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                    Text(
+                        text  = user.phone,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // ── Rank badge + celkové body ─────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(CardDefault),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CardDefault)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick  = { if (points > 0) points -= 10 },
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = user.rank.icon, fontSize = 18.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text  = user.rank.label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Sage
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text  = "Celkem: ${user.totalPoints} b",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted
+                    )
+                    Text(
+                        text  = "Zůstatek: ${user.points} b",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextPrimary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            HorizontalDivider(color = BorderNormal)
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Label
+            Text(
+                text  = "NOVÝ ZŮSTATEK BODŮ",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── Editor bodů ───────────────────────────────
+            Row(
+                modifier          = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+
+                // ── Mínus tlačítko ────────────────────────
+                Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
-                        .background(Color(0x1AB45050))
-                        .padding(4.dp)
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x14B45050))
+                        .border(1.dp, PointsRed.copy(alpha = 0.25f), CircleShape)
+                        .clickable { if (points > 0) points -= 1 },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "−", fontSize = 26.sp, color = PointsRed)
+                    Text(
+                        text     = "−",
+                        fontSize = 24.sp,
+                        color    = PointsRed,
+                        textAlign = TextAlign.Center
+                    )
                 }
 
+                // ── Číslo ─────────────────────────────────
                 OutlinedTextField(
                     value         = points.toString(),
                     onValueChange = { str ->
                         str.toIntOrNull()?.let { v -> if (v >= 0) points = v }
                     },
-                    modifier  = Modifier.weight(1f),
-                    textStyle = MaterialTheme.typography.headlineLarge.copy(
-                        textAlign = TextAlign.Center,
-                        fontSize  = 38.sp
+                    modifier  = Modifier.width(140.dp),
+                    textStyle = MaterialTheme.typography.displayMedium.copy(
+                        textAlign     = TextAlign.Center,
+                        fontSize      = 48.sp,
+                        letterSpacing = (-1).sp
                     ),
                     singleLine      = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -115,19 +211,41 @@ fun EditPointsDialog(
                     )
                 )
 
-                IconButton(
-                    onClick  = { points += 10 },
+                // ── Plus tlačítko ─────────────────────────
+                Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp))
+                        .size(48.dp)
+                        .clip(CircleShape)
                         .background(SageGlow)
-                        .padding(4.dp)
+                        .border(1.dp, Sage.copy(alpha = 0.25f), CircleShape)
+                        .clickable { points += 1 },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "+", fontSize = 26.sp, color = Sage)
+                    Text(
+                        text      = "+",
+                        fontSize  = 24.sp,
+                        color     = Sage,
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            // Změna oproti původnímu
+            val diff = points - user.points
+            if (diff != 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text  = if (diff > 0) "+$diff bodů" else "$diff bodů",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (diff > 0) Sage else PointsRed,
+                    textAlign = TextAlign.Center,
+                    modifier  = Modifier.fillMaxWidth()
+                )
+            }
 
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // ── Tlačítka ──────────────────────────────────
             Row(modifier = Modifier.fillMaxWidth()) {
                 TextButton(
                     onClick  = onDismiss,
@@ -144,10 +262,13 @@ fun EditPointsDialog(
                     shape    = RoundedCornerShape(12.dp),
                     colors   = ButtonDefaults.buttonColors(
                         containerColor = Sage,
-                        contentColor   = Color.White   // FIX: bílý text na zelené
+                        contentColor   = Color.White
                     )
                 ) {
-                    Text(text = "Uložit", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        text  = "Uložit",
+                        style = MaterialTheme.typography.labelLarge
+                    )
                 }
             }
         }
