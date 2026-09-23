@@ -20,11 +20,13 @@ const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret, defineString, defineInt } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
-const admin = require("firebase-admin");
+// firebase-admin 13+ má jen modulární API (admin.firestore() už neexistuje)
+const { initializeApp } = require("firebase-admin/app");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
+const { getMessaging } = require("firebase-admin/messaging");
 
-admin.initializeApp();
-const db = admin.firestore();
-const { FieldValue, Timestamp } = admin.firestore;
+initializeApp();
+const db = getFirestore();
 
 // Firestore běží v nam5 → funkce musí být v us-central1 (europe-west1 nefunguje)
 setGlobalOptions({ region: "us-central1", maxInstances: 5 });
@@ -423,7 +425,7 @@ exports.notifyOnTransaction = onDocumentCreated("users/{userId}/transactions/{tx
   const body = `${tx.reason || "Změna bodů"} · zůstatek ${balance} b`;
 
   try {
-    await admin.messaging().send({
+    await getMessaging().send({
       token,
       notification: { title, body },
       data: { title, body },
