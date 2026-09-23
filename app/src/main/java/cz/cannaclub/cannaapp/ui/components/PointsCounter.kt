@@ -36,6 +36,9 @@ import cz.cannaclub.cannaapp.ui.theme.TextMuted
 import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 import kotlin.math.roundToInt
 
+/** Kolik Kč slevy má 1 bod. Za kolik Kč útraty se 1 bod získá, je v functions/.env (KC_PER_POINT). */
+const val POINT_VALUE_KC = 1
+
 @Composable
 fun PointsCard(
     points: Int,
@@ -142,12 +145,12 @@ fun PointsCard(
                 verticalAlignment     = Alignment.CenterVertically
             ) {
                 Text(
-                    text  = "Hodnota slevy  (1 b = 10 Kč)",
+                    text  = "Hodnota slevy  (1 b = $POINT_VALUE_KC Kč)",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
                 Text(
-                    text  = "${points * 10} Kč",
+                    text  = "${points * POINT_VALUE_KC} Kč",
                     style = MaterialTheme.typography.bodyLarge,
                     color = TextPrimary
                 )
