@@ -206,4 +206,4 @@ sealed class DotykackaState {
     object Syncing  : DotykackaState()
     data class Assigned(val message: String) : DotykackaState()  // zákazník připojen k účtu
     data class Error(val message: String) : DotykackaState()
-}
+}

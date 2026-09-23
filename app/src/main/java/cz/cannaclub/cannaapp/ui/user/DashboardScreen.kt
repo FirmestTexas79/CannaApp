@@ -323,4 +323,4 @@ private fun formatTimestamp(timestamp: com.google.firebase.Timestamp): String {
     } else {
         dateFmt.format(timestamp.toDate())
     }
-}
+}

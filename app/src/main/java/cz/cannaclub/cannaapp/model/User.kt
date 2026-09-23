@@ -49,4 +49,4 @@ enum class MemberRank(
     STRIBRNY("Stříbrný",  "🥈", 500),
     ZLATY   ("Zlatý",     "🥇", 1000),
     RODINA  ("Rodina",    "💚", 2500)
-}
+}
