@@ -15,11 +15,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -43,12 +46,14 @@ import androidx.compose.ui.window.Dialog
 import cz.cannaclub.cannaapp.model.User
 import cz.cannaclub.cannaapp.ui.theme.BorderNormal
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
+import cz.cannaclub.cannaapp.ui.theme.Gold
 import cz.cannaclub.cannaapp.ui.theme.PillBackground
 import cz.cannaclub.cannaapp.ui.theme.PointsRed
 import cz.cannaclub.cannaapp.ui.theme.Sage
 import cz.cannaclub.cannaapp.ui.theme.SageGlow
 import cz.cannaclub.cannaapp.ui.theme.TextMuted
 import cz.cannaclub.cannaapp.ui.theme.TextPrimary
+import cz.cannaclub.cannaapp.viewmodel.DotykackaState
 
 // ── Předvolené důvody ─────────────────────────────────────
 private val reasons = listOf(
@@ -65,7 +70,9 @@ private val reasons = listOf(
 fun EditPointsDialog(
     user: User,
     onDismiss: () -> Unit,
-    onSave: (Int, String) -> Unit   // ← přidán reason parametr
+    onSave: (Int, String) -> Unit,
+    dotykackaState: DotykackaState? = null,   // null = karta otevřená ze seznamu, ne skenem
+    onRetryDotykacka: () -> Unit = {}
 ) {
     var points         by remember { mutableStateOf(user.points) }
     var selectedReason by remember { mutableStateOf(reasons.first()) }
@@ -75,6 +82,7 @@ fun EditPointsDialog(
             modifier = Modifier
                 .clip(RoundedCornerShape(24.dp))
                 .background(PillBackground)
+                .verticalScroll(rememberScrollState())   // na menších telefonech se karta nevejde
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -117,6 +125,12 @@ fun EditPointsDialog(
                         color = TextMuted
                     )
                 }
+            }
+
+            // ── Stav připojení k účtu na pokladně ─────────
+            if (dotykackaState != null && dotykackaState !is DotykackaState.Idle) {
+                Spacer(modifier = Modifier.height(12.dp))
+                DotykackaBanner(state = dotykackaState, onRetry = onRetryDotykacka)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -270,6 +284,26 @@ fun EditPointsDialog(
                 }
             }
 
+            // Rychlé úpravy — ťukání po 1 bodu je u pokladny zbytečně pomalé
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+            ) {
+                listOf(-10, -5, 5, 10, 20).forEach { step ->
+                    Text(
+                        text     = if (step > 0) "+$step" else "−${-step}",
+                        style    = MaterialTheme.typography.labelSmall,
+                        color    = if (step > 0) Sage else PointsRed,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(CardDefault)
+                            .clickable { points = (points + step).coerceAtLeast(0) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
             val diff = points - user.points
             if (diff != 0) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -308,6 +342,53 @@ fun EditPointsDialog(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DotykackaBanner(state: DotykackaState, onRetry: () -> Unit) {
+    val (color, text) = when (state) {
+        is DotykackaState.Syncing  -> Gold to "Připojuji k účtu na pokladně…"
+        is DotykackaState.Assigned -> Sage to "✓ ${state.message}"
+        is DotykackaState.Error    -> PointsRed to state.message
+        DotykackaState.Idle        -> return
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(color.copy(alpha = 0.10f))
+            .border(1.dp, color.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (state is DotykackaState.Syncing) {
+            CircularProgressIndicator(
+                modifier    = Modifier.size(14.dp),
+                color       = Gold,
+                strokeWidth = 2.dp
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+        }
+        Text(
+            text     = text,
+            style    = MaterialTheme.typography.bodySmall,
+            color    = color,
+            modifier = Modifier.weight(1f)
+        )
+        if (state is DotykackaState.Error) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text     = "Znovu",
+                style    = MaterialTheme.typography.labelSmall,
+                color    = TextPrimary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(CardDefault)
+                    .clickable { onRetry() }
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            )
         }
     }
 }

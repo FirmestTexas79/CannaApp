@@ -68,8 +68,10 @@ fun AdminListScreen(
     val searchQuery  by viewModel.searchQuery.collectAsState()
     val opState      by viewModel.operationState.collectAsState()
     val scannedUser  by viewModel.scannedUser.collectAsState()
+    val dotykacka    by viewModel.dotykackaState.collectAsState()
 
     var selectedUser  by remember { mutableStateOf<User?>(null) }
+    var openedByScan  by remember { mutableStateOf(false) }   // karta otevřená skenem → ukázat stav pokladny
     var showAddDialog by remember { mutableStateOf(false) }
     var showScanner   by remember { mutableStateOf(false) }
     val snackbarState = remember { SnackbarHostState() }
@@ -93,6 +95,7 @@ fun AdminListScreen(
     LaunchedEffect(scannedUser) {
         scannedUser?.let {
             selectedUser = it
+            openedByScan = true
             viewModel.clearScannedUser()
         }
     }
@@ -282,7 +285,6 @@ fun AdminListScreen(
     // ── QR Skener ─────────────────────────────────────────
     if (showScanner) {
         QrScannerDialog(
-            viewModel = viewModel,
             onDismiss = { showScanner = false },
             onScanned = { scannedUserId ->
                 showScanner = false
@@ -293,12 +295,21 @@ fun AdminListScreen(
 
     // ── Edit dialog ───────────────────────────────────────
     selectedUser?.let { user ->
+        val close = {
+            selectedUser = null
+            openedByScan = false
+            viewModel.resetDotykackaState()
+        }
+        // Ukládá se ROZDÍL oproti stavu při otevření karty (viz UserRepository.updatePoints),
+        // takže body připsané mezitím z Dotykačky se nepřepíšou.
         EditPointsDialog(
-            user      = user,
-            onDismiss = { selectedUser = null },
-            onSave    = { newPoints, reason ->        // ← přidán reason
+            user           = user,
+            dotykackaState = if (openedByScan) dotykacka else null,
+            onRetryDotykacka = { viewModel.assignToDotykacka(user.id) },
+            onDismiss      = close,
+            onSave         = { newPoints, reason ->
                 viewModel.updatePoints(user, newPoints, reason)
-                selectedUser = null
+                close()
             }
         )
     }

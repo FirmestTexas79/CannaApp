@@ -89,4 +89,5 @@ dependencies {
     implementation(libs.accompanist.permissions)
 
     implementation(libs.firebase.messaging.ktx)
+    implementation(libs.firebase.functions.ktx)
 }

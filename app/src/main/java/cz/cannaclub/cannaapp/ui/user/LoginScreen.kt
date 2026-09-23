@@ -90,18 +90,16 @@ fun LoginScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
 
-    // Žádost o povolení notifikací (Android 13+)
+    // Žádost o povolení notifikací (Android 13+).
+    // Dřív tu byla lokální funkce, kterou nikdo nevolal → systém se nikdy nezeptal
+    // a Android 13+ bez povolení všechny notifikace tiše zahazuje.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        @OptIn(ExperimentalPermissionsApi::class)
-        @Composable
-        fun RequestNotificationPermission() {
-            val notifPermission = rememberPermissionState(
-                permission = Manifest.permission.POST_NOTIFICATIONS
-            )
-            LaunchedEffect(Unit) {
-                if (!notifPermission.status.isGranted) {
-                    notifPermission.launchPermissionRequest()
-                }
+        val notifPermission = rememberPermissionState(
+            permission = Manifest.permission.POST_NOTIFICATIONS
+        )
+        LaunchedEffect(Unit) {
+            if (!notifPermission.status.isGranted) {
+                notifPermission.launchPermissionRequest()
             }
         }
     }

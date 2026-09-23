@@ -67,6 +67,20 @@ class UserRepository {
     }
 
 
+    // Živý odběr jednoho zákazníka — body na dashboardu se aktualizují hned,
+    // jak obsluha nebo Dotykačka připíše body (dřív se načetly jen jednou při přihlášení).
+    fun getUserFlow(userId: String): Flow<User?> = callbackFlow {
+        val listener = usersCol.document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                trySend(
+                    if (snapshot.exists()) snapshot.toObject(User::class.java)?.copy(id = snapshot.id)
+                    else null
+                )
+            }
+        awaitClose { listener.remove() }
+    }
+
     suspend fun getUserById(userId: String): User? {
         return try {
             val doc = usersCol.document(userId).get().await()
@@ -89,39 +103,47 @@ class UserRepository {
     }
 
     // ─────────────────────────────────────────────────────
-    // BODY — aktualizuje points (zůstatek) i totalPoints (celkové)
-    // totalPoints se nikdy nesnižuje — základ pro rank
+    // BODY — obsluha nastaví nový zůstatek, zapíše se ROZDÍL.
+    // Transakce čte aktuální stav z Firestore, takže když mezitím
+    // Dotykačka připíše body za nákup, obsluha je nepřepíše starou hodnotou.
+    // totalPoints se nikdy nesnižuje — základ pro rank.
     // ─────────────────────────────────────────────────────
     suspend fun updatePoints(
         userId: String,
         oldPoints: Int,
         newPoints: Int,
-        oldTotalPoints: Int,
         reason: String = "Úprava obsluhou"
     ): Boolean {
+        val diff = newPoints - oldPoints
+        if (diff == 0) return true
         return try {
-            val diff = newPoints - oldPoints
-            val type = if (diff >= 0) TransactionType.ADD else TransactionType.SUBTRACT
+            val db     = FirebaseManager.firestore
+            val userRef = usersCol.document(userId)
+            db.runTransaction { tx ->
+                val snap    = tx.get(userRef)
+                val current = snap.getLong("points")?.toInt() ?: 0
+                val total   = snap.getLong("totalPoints")?.toInt() ?: 0
+                val updated = (current + diff).coerceAtLeast(0)
+                val applied = updated - current
 
-            // totalPoints se zvyšuje jen při přičítání — nikdy neklesá
-            val newTotal = if (diff > 0) oldTotalPoints + diff else oldTotalPoints
-
-            FirebaseManager.firestore.runBatch { batch ->
-                batch.update(
-                    usersCol.document(userId),
+                tx.update(
+                    userRef,
                     mapOf(
-                        "points"      to newPoints,
-                        "totalPoints" to newTotal
+                        "points"      to updated,
+                        "totalPoints" to if (applied > 0) total + applied else total
                     )
                 )
                 val txRef = txCol(userId).document()
-                val transaction = Transaction(
-                    id     = txRef.id,
-                    type   = type,
-                    amount = kotlin.math.abs(diff),
-                    reason = reason
+                tx.set(
+                    txRef,
+                    Transaction(
+                        id     = txRef.id,
+                        type   = if (applied >= 0) TransactionType.ADD else TransactionType.SUBTRACT,
+                        amount = kotlin.math.abs(applied),
+                        reason = reason
+                    )
                 )
-                batch.set(txRef, transaction)
+                null
             }.await()
             true
         } catch (e: Exception) {
@@ -134,33 +156,30 @@ class UserRepository {
         email: String,
         phone: String,
         initialPoints: Int = 0
-    ): Boolean {
+    ): AddUserResult {
         return try {
+            val normalizedEmail = email.trim().lowercase()
+            val existing = usersCol
+                .whereEqualTo("email", normalizedEmail)
+                .limit(1)
+                .get()
+                .await()
+            if (!existing.isEmpty) return AddUserResult.DuplicateEmail
+
             val user = User(
                 name        = name,
-                email       = email.trim().lowercase(),
-                phone       = phone,
+                email       = normalizedEmail,
+                phone       = phone.trim(),
                 points      = initialPoints,
                 totalPoints = initialPoints
             )
             usersCol.add(user).await()
-            true
+            AddUserResult.Success
         } catch (e: Exception) {
-            false
+            AddUserResult.Error
         }
     }
 
-    // Přidej na konec UserRepository.kt
-    suspend fun updateDotykackaId(userId: String, dotykackaId: String): Boolean {
-        return try {
-            usersCol.document(userId)
-                .update("dotykackaId", dotykackaId)
-                .await()
-            true
-        } catch (e: Exception) {
-            false
-        }
-    }
     // Uloží FCM token do Firestore
     suspend fun saveFcmToken(userId: String, token: String): Boolean {
         return try {
@@ -173,4 +192,10 @@ class UserRepository {
         }
     }
 
+}
+
+sealed class AddUserResult {
+    object Success        : AddUserResult()
+    object DuplicateEmail : AddUserResult()
+    object Error          : AddUserResult()
 }

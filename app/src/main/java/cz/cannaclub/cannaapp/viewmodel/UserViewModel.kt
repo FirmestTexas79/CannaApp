@@ -29,15 +29,17 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
     private val _loginState = MutableStateFlow<LoginState>(LoginState.Idle)
     val loginState: StateFlow<LoginState> = _loginState.asStateFlow()
 
-    // FIX: trackujeme Job transakčního listeneru, abychom ho mohli zrušit při
-    // opětovném přihlášení nebo odhlášení — jinak by v paměti žily duplicitní
-    // Firestore SnapshotListenery a zbytečně čerpaly data.
+    // Živé Firestore listenery — rušíme je při odhlášení / novém přihlášení
+    private var userJob: Job? = null
     private var transactionJob: Job? = null
 
     // Předvyplněné hodnoty z minulého přihlášení
     val savedName:  String get() = userPrefs.getSavedName()
     val savedEmail: String get() = userPrefs.getSavedEmail()
     val savedPhone: String get() = userPrefs.getSavedPhone()
+
+    /** True, pokud se má po splashi zkusit automatické přihlášení. */
+    val canAutoLogin: Boolean get() = userPrefs.hasSavedUser()
 
     fun loginUser(name: String, email: String, phone: String) {
         if (name.isBlank() || email.isBlank() || phone.isBlank()) {
@@ -55,8 +57,9 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
             val user = repository.loginUser(name, email, phone)
 
             if (user != null) {
-                userPrefs.saveUser(name, email, phone)
+                userPrefs.saveUser(name, email, phone, user.id)
                 _currentUser.value = user
+                observeUser(user.id)
                 loadTransactions(user.id)
                 saveFcmToken(user.id)
                 _loginState.value = LoginState.Success
@@ -66,8 +69,22 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Přihlášení uloženými údaji hned po spuštění (volá splash). */
+    fun autoLogin() {
+        if (!canAutoLogin) return
+        loginUser(savedName, savedEmail, savedPhone)
+    }
+
+    private fun observeUser(userId: String) {
+        userJob?.cancel()
+        userJob = viewModelScope.launch {
+            repository.getUserFlow(userId).collect { user ->
+                if (user != null) _currentUser.value = user
+            }
+        }
+    }
+
     private fun loadTransactions(userId: String) {
-        // Zruší případný předchozí listener — klíčová oprava memory leaku
         transactionJob?.cancel()
         transactionJob = viewModelScope.launch {
             repository.getTransactionsFlow(userId).collect { txList ->
@@ -77,27 +94,29 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
-        // Zruší Firestore listener okamžitě při odhlášení
+        userJob?.cancel()
+        userJob = null
         transactionJob?.cancel()
         transactionJob = null
 
-        _currentUser.value   = null
-        _transactions.value  = emptyList()
-        _loginState.value    = LoginState.Idle
-        // Záměrně NESMAŽEME userPrefs — chceme předvyplnit příště
+        _currentUser.value  = null
+        _transactions.value = emptyList()
+        _loginState.value   = LoginState.Idle
+        // Údaje necháme předvyplněné, jen vypneme automatické přihlášení
+        userPrefs.markLoggedOut()
     }
 
     fun resetLoginState() {
         _loginState.value = LoginState.Idle
     }
+
     private fun saveFcmToken(userId: String) {
         viewModelScope.launch {
             try {
                 val token = FirebaseMessaging.getInstance().token.await()
-                android.util.Log.d("FCM_TOKEN", "Token: $token")  // ← přidej
                 repository.saveFcmToken(userId, token)
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("FCM", "Token se nepodařilo uložit", e)
             }
         }
     }

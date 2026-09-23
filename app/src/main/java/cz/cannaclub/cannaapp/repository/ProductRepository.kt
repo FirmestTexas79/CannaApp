@@ -1,5 +1,7 @@
 package cz.cannaclub.cannaapp.repository
 
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.storage.StorageMetadata
 import cz.cannaclub.cannaapp.firebase.FirebaseManager
 import cz.cannaclub.cannaapp.model.Product
 import kotlinx.coroutines.channels.awaitClose
@@ -57,10 +59,23 @@ class ProductRepository {
         awaitClose { listener.remove() }
     }
 
-    suspend fun seedProducts() {
-        seedProducts.forEach { product ->
-            FirebaseManager.productsCol.document(product.id).set(product).await()
+    /**
+     * Výchozí 4 produkty se zapíšou JEN JEDNOU (při úplně prvním spuštění).
+     * Dřív se přepisovaly při každém startu appky → úpravy/smazání adminem
+     * se "samy vracely". Stav si pamatujeme v dokumentu meta/app.
+     */
+    suspend fun seedProductsIfNeeded() {
+        val metaRef = FirebaseManager.firestore.collection("meta").document("app")
+        val meta = metaRef.get().await()
+        if (meta.getBoolean("productsSeeded") == true) return
+
+        val hasAny = !FirebaseManager.productsCol.limit(1).get().await().isEmpty
+        if (!hasAny) {
+            seedProducts.forEach { product ->
+                FirebaseManager.productsCol.document(product.id).set(product).await()
+            }
         }
+        metaRef.set(mapOf("productsSeeded" to true), SetOptions.merge()).await()
     }
 
     // ── OPRAVA: používáme ID z produktu — stejné ID pro Firestore i Storage ──
@@ -91,7 +106,12 @@ class ProductRepository {
     suspend fun uploadProductImage(imageBytes: ByteArray, productId: String): String {
         val storageRef = FirebaseManager.storage.reference
             .child("products/$productId.jpg")
-        val snapshot = storageRef.putBytes(imageBytes).await()
-        return snapshot.storage.downloadUrl.await().toString()
+        // Bez contentType uloží Storage soubor jako application/octet-stream
+        val metadata = StorageMetadata.Builder()
+            .setContentType("image/jpeg")
+            .setCacheControl("public, max-age=86400")
+            .build()
+        storageRef.putBytes(imageBytes, metadata).await()
+        return storageRef.downloadUrl.await().toString()
     }
 }

@@ -314,15 +314,26 @@ private fun ProductCard(
                     .clip(CircleShape)
                     .background(CardHover)
             )
-            if (product.imageUrl.isNotEmpty()) {
+            var loadFailed by remember(product.imageUrl) { mutableStateOf(false) }
+            if (product.imageUrl.isNotEmpty() && !loadFailed) {
+                // Vlastní fotky jsou obdélníkové → oříznout do kruhu, ať nejsou mrňavé.
                 AsyncImage(
                     model              = ImageRequest.Builder(context)
                         .data(product.imageUrl).crossfade(true).build(),
                     contentDescription = product.name,
-                    modifier           = Modifier.size(72.dp),
-                    contentScale       = ContentScale.Fit,
+                    modifier           = Modifier
+                        .size(if (resId != 0) 72.dp else 100.dp)
+                        .clip(CircleShape),
+                    contentScale       = if (resId != 0) ContentScale.Fit else ContentScale.Crop,
                     placeholder        = if (resId != 0) painterResource(resId) else null,
-                    error              = if (resId != 0) painterResource(resId) else null
+                    onError            = { state ->
+                        android.util.Log.e(
+                            "ProductImage",
+                            "Obrázek '${product.name}' se nenačetl: ${product.imageUrl}",
+                            state.result.throwable
+                        )
+                        if (resId == 0) loadFailed = true
+                    }
                 )
             } else if (resId != 0) {
                 androidx.compose.foundation.Image(
@@ -437,7 +448,14 @@ private fun ProductDetailDialog(
                                 .height(240.dp),
                             contentScale       = ContentScale.Fit,
                             placeholder        = if (resId != 0) painterResource(resId) else null,
-                            error              = if (resId != 0) painterResource(resId) else null
+                            error              = if (resId != 0) painterResource(resId) else null,
+                            onError            = { state ->
+                                android.util.Log.e(
+                                    "ProductImage",
+                                    "Detail '${product.name}' se nenačetl: ${product.imageUrl}",
+                                    state.result.throwable
+                                )
+                            }
                         )
                     } else if (resId != 0) {
                         androidx.compose.foundation.Image(

@@ -1,6 +1,7 @@
 package cz.cannaclub.cannaapp.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -13,6 +14,7 @@ import cz.cannaclub.cannaapp.ui.user.DashboardScreen
 import cz.cannaclub.cannaapp.ui.user.LoginScreen
 import cz.cannaclub.cannaapp.ui.user.SplashScreen
 import cz.cannaclub.cannaapp.viewmodel.AdminViewModel
+import cz.cannaclub.cannaapp.viewmodel.LoginState
 import cz.cannaclub.cannaapp.viewmodel.ProductViewModel
 import cz.cannaclub.cannaapp.viewmodel.UserViewModel
 
@@ -42,9 +44,18 @@ fun CannaNavGraph(
 
         // ── Splash ────────────────────────────────────────────
         composable(Routes.SPLASH) {
+            // Během animace se zkusí přihlásit uloženými údaji
+            LaunchedEffect(Unit) { userViewModel.autoLogin() }
+
             SplashScreen(
                 onFinished = {
-                    navController.navigate(Routes.USER_LOGIN) {
+                    val target = if (userViewModel.loginState.value is LoginState.Success) {
+                        userViewModel.resetLoginState()
+                        Routes.DASHBOARD
+                    } else {
+                        Routes.USER_LOGIN   // pokud ještě načítá, LoginScreen přesměruje sám
+                    }
+                    navController.navigate(target) {
                         popUpTo(Routes.SPLASH) { inclusive = true }
                     }
                 }

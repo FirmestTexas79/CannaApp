@@ -7,29 +7,21 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,25 +47,19 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
 import cz.cannaclub.cannaapp.ui.theme.Gold
-import cz.cannaclub.cannaapp.ui.theme.PointsRed
-import cz.cannaclub.cannaapp.ui.theme.Sage
 import cz.cannaclub.cannaapp.ui.theme.TextMuted
 import cz.cannaclub.cannaapp.ui.theme.TextPrimary
-import cz.cannaclub.cannaapp.viewmodel.AdminViewModel
-import cz.cannaclub.cannaapp.viewmodel.DotykackaState
 import java.util.concurrent.Executors
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun QrScannerDialog(
-    viewModel: AdminViewModel,
     onDismiss: () -> Unit,
     onScanned: (String) -> Unit
 ) {
     val context          = LocalContext.current
     val lifecycleOwner   = LocalLifecycleOwner.current
     val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
-    val dotykackaState   by viewModel.dotykackaState.collectAsState()
 
     LaunchedEffect(Unit) {
         if (!cameraPermission.status.isGranted) {
@@ -94,6 +80,10 @@ fun QrScannerDialog(
 
                 var scanned  by remember { mutableStateOf(false) }
                 val executor = remember { Executors.newSingleThreadExecutor() }
+
+                androidx.compose.runtime.DisposableEffect(Unit) {
+                    onDispose { executor.shutdown() }
+                }
 
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -174,66 +164,6 @@ fun QrScannerDialog(
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    // ── Dotykačka status indicator ────────
-                    AnimatedVisibility(
-                        visible = dotykackaState !is DotykackaState.Idle,
-                        enter   = fadeIn(),
-                        exit    = fadeOut()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(Color.Black.copy(alpha = 0.6f))
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            when (dotykackaState) {
-                                is DotykackaState.Syncing -> {
-                                    CircularProgressIndicator(
-                                        modifier    = Modifier.size(14.dp),
-                                        color       = Gold,
-                                        strokeWidth = 2.dp
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text  = "Synchronizuji s Dotykačkou…",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Gold
-                                    )
-                                }
-                                is DotykackaState.Assigned -> {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(10.dp)
-                                            .clip(CircleShape)
-                                            .background(Sage)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text  = "✓ Zákazník přiřazen k objednávce",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Sage
-                                    )
-                                }
-                                is DotykackaState.Error -> {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(10.dp)
-                                            .clip(CircleShape)
-                                            .background(PointsRed)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text  = (dotykackaState as DotykackaState.Error).message,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = PointsRed
-                                    )
-                                }
-                                else -> {}
-                            }
-                        }
-                    }
 
                     Spacer(modifier = Modifier.weight(1f))
 

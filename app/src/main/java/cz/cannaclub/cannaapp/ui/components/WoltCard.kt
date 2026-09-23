@@ -29,7 +29,8 @@ import cz.cannaclub.cannaapp.ui.theme.SageGlow
 import cz.cannaclub.cannaapp.ui.theme.TextMuted
 import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 
-// Zatím odkaz vede na hlavní stránku Woltu v HK
+// TODO: vlož přesný odkaz na Cannaclub (Wolt app → Cannaclub → Sdílet → Kopírovat odkaz).
+// Dokud tu je obecná stránka HK, zákazník musí obchod dohledat sám.
 private const val WOLT_URL = "https://wolt.com/cs/cze/hradec-kralove"
 
 @Composable

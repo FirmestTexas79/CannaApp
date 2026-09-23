@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dotykačka – získání Refresh Tokenu</title>
+<style>
+  :root { --bg:#f6f5f0; --card:#fff; --ink:#1d1d1b; --muted:#6b6b63; --accent:#4A6741; --line:#dedbd0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1b19; --card:#252521; --ink:#eeeae0; --muted:#a3a096; --accent:#8fb285; --line:#3a3a34; } }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p.lead { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; margin-bottom:16px; }
+  label { display:block; font-size:13px; font-weight:600; margin:12px 0 4px; }
+  input { width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--ink); font:inherit; }
+  button { margin-top:16px; width:100%; padding:12px; border:0; border-radius:10px; background:var(--accent); color:#fff; font:600 16px system-ui; cursor:pointer; }
+  small { color:var(--muted); }
+  code { background:var(--bg); padding:1px 5px; border-radius:5px; word-break:break-all; }
+  .out { display:none; } .out.show { display:block; }
+  .err { color:#b24a4a; font-weight:600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Dotykačka – Refresh Token</h1>
+  <p class="lead">Otevři tuhle stránku v prohlížeči na svém počítači (dvojklik na soubor). Nic se neposílá nikam jinam než do Dotykačky.</p>
+
+  <div class="card">
+    <form id="f">
+      <label for="cid">Client ID</label>
+      <input id="cid" value="cannaapp" autocomplete="off" required>
+      <label for="sec">Client Secret</label>
+      <input id="sec" type="password" autocomplete="off" required>
+      <small>Přišlo e-mailem od Dotykačky spolu s Client ID.</small>
+      <button type="submit">Přihlásit se do Dotykačky</button>
+    </form>
+    <p id="msg" class="err"></p>
+  </div>
+
+  <div class="card">
+    <strong>Co se stane:</strong>
+    <ol>
+      <li>Otevře se nové okno Dotykačky. Přihlásí se v něm <b>majitel</b> (jeho účet do Dotykačky).</li>
+      <li>Vybere provozovnu (cloud) Cannaclub a potvrdí přístup pro aplikaci.</li>
+      <li>Okno se přesměruje na <code>https://dotykacka.cz/?token=…&amp;cloudid=…</code>.</li>
+      <li>Z adresního řádku zkopíruj celou adresu a vlož ji níž.</li>
+    </ol>
+    <small>Na přihlášení je cca 15 minut. Hodiny v počítači musí jít přesně, jinak Dotykačka napíše „The connection has expired“.</small>
+  </div>
+
+  <div class="card">
+    <label for="url">Adresa, na kterou tě Dotykačka přesměrovala</label>
+    <input id="url" placeholder="https://dotykacka.cz/?token=...&cloudid=...">
+    <div id="res" class="out">
+      <label>Refresh Token</label><code id="tok"></code>
+      <label>Cloud ID</label><code id="cloud"></code>
+      <p><small>Refresh Token nikdy nevyprší a dává plný přístup k pokladně — nikam ho neposílej ani necommituj do gitu. Pokračuj krokem 3 v DOTYKACKA_NAVOD.md.</small></p>
+    </div>
+  </div>
+</main>
+<script>
+  // Podle oficiální dokumentace: POST https://admin.dotykacka.cz/client/connect/v2
+  // signature = HMAC-SHA256(klíč: client_secret, zpráva: timestamp jako text) v hex
+  async function hmacHex(key, message) {
+    const enc = new TextEncoder();
+    const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const sig = await crypto.subtle.sign("HMAC", k, enc.encode(message));
+    return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  document.getElementById("f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("msg");
+    msg.textContent = "";
+    try {
+      const clientId = document.getElementById("cid").value.trim();
+      const secret = document.getElementById("sec").value.trim();
+      const timestamp = Math.floor(Date.now() / 1000);
+      const signature = await hmacHex(secret, String(timestamp));
+      const fields = {
+        client_id: clientId, timestamp, signature, scope: "*",
+        redirect_uri: "https://dotykacka.cz",
+        state: "cannaapp_" + Math.random().toString(36).slice(2, 10)
+      };
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "https://admin.dotykacka.cz/client/connect/v2";
+      form.target = "dotykacka_oauth";
+      for (const [name, value] of Object.entries(fields)) {
+        const i = document.createElement("input");
+        i.type = "hidden"; i.name = name; i.value = value;
+        form.appendChild(i);
+      }
+      document.body.appendChild(form);
+      form.submit();
+      form.remove();
+    } catch (err) {
+      msg.textContent = "Nepodařilo se vytvořit podpis: " + err.message + " (otevři stránku v Chrome/Firefoxu/Edge)";
+    }
+  });
+
+  document.getElementById("url").addEventListener("input", (e) => {
+    const res = document.getElementById("res");
+    try {
+      const u = new URL(e.target.value.trim());
+      const token = u.searchParams.get("token");
+      const cloud = u.searchParams.get("cloudid");
+      if (!token) { res.classList.remove("show"); return; }
+      document.getElementById("tok").textContent = token;
+      document.getElementById("cloud").textContent = cloud || "(chybí)";
+      res.classList.add("show");
+    } catch { res.classList.remove("show"); }
+  });
+</script>
+</body>
+</html>

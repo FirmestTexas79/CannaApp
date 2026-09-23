@@ -2,9 +2,11 @@ package cz.cannaclub.cannaapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
 import cz.cannaclub.cannaapp.model.User
 import cz.cannaclub.cannaapp.repository.UserRepository
-import cz.cannaclub.cannaapp.repository.dotykacka.DotykackaRepository
+import cz.cannaclub.cannaapp.repository.AddUserResult
+import cz.cannaclub.cannaapp.repository.DotykackaRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,8 +71,11 @@ class AdminViewModel(
         }
     }
 
+    private var usersJob: Job? = null
+
     private fun loadUsers() {
-        viewModelScope.launch {
+        usersJob?.cancel()   // při opakovaném přihlášení nezakládat druhý listener
+        usersJob = viewModelScope.launch {
             repository.getAllUsersFlow().collect { users ->
                 _allUsers.value = users
             }
@@ -82,50 +87,47 @@ class AdminViewModel(
     }
 
     // ─────────────────────────────────────────────────────
-    // QR skenování — dělá DVĚ věci najednou:
-    // 1. Najde zákazníka ve Firebase → zobrazí v admin panelu
-    // 2. Synchronizuje s Dotykačkou → přiřadí k objednávce
+    // QR skenování:
+    // 1. Najde zákazníka ve Firebase → otevře se jeho karta
+    // 2. Na pozadí ho přes server připojí k účtu v Dotykačce;
+    //    průběh se ukazuje přímo v kartě zákazníka (EditPointsDialog)
     // ─────────────────────────────────────────────────────
     fun findUserByQrCode(userId: String) {
         viewModelScope.launch {
-            // 1. Firebase lookup
-            val user = repository.getUserById(userId)
+            val user = repository.getUserById(userId.trim())
             if (user == null) {
                 _operationState.value = OperationState.Error("Zákazník nenalezen")
                 return@launch
             }
-
             _scannedUser.value = user
+            assignToDotykacka(user.id)
+        }
+    }
 
-            // 2. Dotykačka synchronizace (na pozadí — nezablokuje UI)
-            launch {
-                _dotykackaState.value = DotykackaState.Syncing
-
-                // Synchronizuj zákazníka v Dotykačce
-                val dotykackaId = dotykackaRepository.syncCustomer(user)
-
-                if (dotykackaId != null) {
-                    // Ulož dotykackaId do Firebase pokud ho ještě nemáme
-                    if (user.dotykackaId.isBlank()) {
-                        repository.updateDotykackaId(userId, dotykackaId)
+    /** Připojení k účtu na pokladně (i opakovaný pokus z karty zákazníka). */
+    fun assignToDotykacka(userId: String) {
+        viewModelScope.launch {
+            _dotykackaState.value = DotykackaState.Syncing
+            _dotykackaState.value = dotykackaRepository.assignCustomerToOrder(userId).fold(
+                onSuccess = { r ->
+                    val total = r.orderTotal?.let { " (${it.toInt()} Kč)" } ?: ""
+                    val msg = when {
+                        r.alreadyAssigned         -> "Zákazník už je na účtu$total"
+                        r.openWithoutCustomer > 1 -> "Připojeno k nejnovějšímu účtu$total — otevřených je ${r.openWithoutCustomer}, zkontroluj pokladnu"
+                        else                      -> "Připojeno k účtu na pokladně$total"
                     }
-
-                    // Přiřaď zákazníka k aktuální objednávce
-                    val assigned = dotykackaRepository.assignCustomerToCurrentOrder(dotykackaId)
-                    _dotykackaState.value = if (assigned) {
-                        DotykackaState.Assigned
-                    } else {
-                        DotykackaState.Error("Nepodařilo se přiřadit k objednávce")
-                    }
-                } else {
-                    _dotykackaState.value = DotykackaState.Error("Dotykačka nedostupná")
-                }
-            }
+                    DotykackaState.Assigned(msg)
+                },
+                onFailure = { e -> DotykackaState.Error(e.message ?: "Dotykačka nedostupná") }
+            )
         }
     }
 
     fun clearScannedUser() {
         _scannedUser.value = null
+    }
+
+    fun resetDotykackaState() {
         _dotykackaState.value = DotykackaState.Idle
     }
 
@@ -140,8 +142,7 @@ class AdminViewModel(
                 userId         = user.id,
                 oldPoints      = user.points,
                 newPoints      = newPoints,
-                oldTotalPoints = user.totalPoints,
-                reason         = reason             // ← předáme dál
+                reason         = reason
             )
             _operationState.value = if (success) {
                 OperationState.Success("Body uloženy")
@@ -162,11 +163,10 @@ class AdminViewModel(
         }
         viewModelScope.launch {
             _operationState.value = OperationState.Loading
-            val success = repository.addUser(name, email, phone, initialPoints)
-            _operationState.value = if (success) {
-                OperationState.Success("Zákazník přidán")
-            } else {
-                OperationState.Error("Nepodařilo se přidat zákazníka")
+            _operationState.value = when (repository.addUser(name, email, phone, initialPoints)) {
+                AddUserResult.Success        -> OperationState.Success("Zákazník přidán")
+                AddUserResult.DuplicateEmail -> OperationState.Error("Zákazník s tímto e-mailem už existuje")
+                AddUserResult.Error          -> OperationState.Error("Nepodařilo se přidat zákazníka")
             }
         }
     }
@@ -177,7 +177,10 @@ class AdminViewModel(
 
     fun logout() {
         repository.logoutAdmin()
+        usersJob?.cancel()
+        usersJob = null
         _allUsers.value = emptyList()
+        _dotykackaState.value = DotykackaState.Idle
         _loginState.value = AdminLoginState.Idle
     }
 }
@@ -200,6 +203,6 @@ sealed class OperationState {
 sealed class DotykackaState {
     object Idle     : DotykackaState()
     object Syncing  : DotykackaState()
-    object Assigned : DotykackaState()  // zákazník přiřazen k objednávce
+    data class Assigned(val message: String) : DotykackaState()  // zákazník připojen k účtu
     data class Error(val message: String) : DotykackaState()
 }
