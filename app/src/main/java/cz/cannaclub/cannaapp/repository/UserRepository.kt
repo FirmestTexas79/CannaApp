@@ -16,6 +16,12 @@ class UserRepository {
     private val usersCol = FirebaseManager.usersCollection
     private fun txCol(uid: String) = FirebaseManager.transactionsCollection(uid)
 
+    /**
+     * Přihlášení zákazníka: e-mail + telefon, nebo e-mail + jméno u zákazníků
+     * převzatých z Dotykačky, kteří tam telefon nemají (ten se pak doplní).
+     * Telefon se porovnává podle posledních 9 číslic (+420 / mezery nevadí),
+     * jméno bez diakritiky a v libovolném pořadí.
+     */
     suspend fun loginUser(name: String, email: String, phone: String): User? {
         return try {
             val snapshot = usersCol
@@ -26,19 +32,40 @@ class UserRepository {
 
             if (snapshot.isEmpty) return null
 
-            val normalizedPhone = phone.replace(Regex("\\s+"), "")
+            val enteredPhone = phoneKey(phone)
+            val enteredName  = nameKey(name)
 
-            snapshot.documents.firstNotNullOfOrNull { doc ->
-                val user = doc.toObject(User::class.java)?.copy(id = doc.id)
-                    ?: return@firstNotNullOfOrNull null
-                val nameMatch  = user.name.trim().equals(name.trim(), ignoreCase = true)
-                val phoneMatch = user.phone.replace(Regex("\\s+"), "") == normalizedPhone
-                if (nameMatch && phoneMatch) user else null
+            val users = snapshot.documents.mapNotNull { doc ->
+                doc.toObject(User::class.java)?.copy(id = doc.id)
+            }
+
+            users.firstOrNull { u ->
+                enteredPhone.isNotEmpty() && phoneKey(u.phone) == enteredPhone
+            } ?: users.firstOrNull { u ->
+                phoneKey(u.phone).isEmpty() && namesMatch(u.name, enteredName)
+            }?.also { u ->
+                if (enteredPhone.isNotEmpty()) {
+                    usersCol.document(u.id).update("phone", phone.trim()).await()
+                }
             }
         } catch (e: Exception) {
             null
         }
     }
+
+    private fun phoneKey(p: String): String =
+        p.filter { it.isDigit() }.takeLast(9).let { if (it.length == 9) it else "" }
+
+    private fun nameKey(n: String): List<String> =
+        java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{Mn}+"), "")
+            .lowercase()
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+            .sorted()
+
+    private fun namesMatch(stored: String, entered: List<String>): Boolean =
+        entered.isNotEmpty() && nameKey(stored) == entered
 
     suspend fun loginAdmin(email: String, password: String): Boolean {
         return try {

@@ -11,6 +11,7 @@
  *  - syncDotykackaOrders    (každých 5 min) → dosynchronizuje zákazníky + zaplacené účty se zákazníkem = body
  *  - onUserCreated          (Firestore trigger) → nový zákazník dostane členský kód a účet v Dotykačce
  *  - notifyOnTransaction    (Firestore trigger) → push notifikace při každé změně bodů
+ *  - importDotykackaCustomers (callable) → založí v appce účty stávajícím zákazníkům z Dotykačky
  *  - dotykackaStatus        (callable)  → diagnostika spojení z admin appky / při nastavování
  *
  * Nastavení: viz DOTYKACKA_NAVOD.md v kořeni repa.
@@ -165,6 +166,7 @@ async function findCustomerByEmail(email) {
 }
 
 async function findCustomerByExternalId(userId) {
+  if (!userId) return null;
   const filter = encodeURIComponent(`externalId|eq|${userId}`);
   const json = await api(`/customers?filter=${filter}&limit=5`, { allow404: true });
   return listData(json).find((c) => !c.deleted) || null;
@@ -195,6 +197,7 @@ async function createCustomer(user, barcode) {
     tags: ["CannaApp"],
     display: true,
     deleted: false,
+    flags: 0, // povinné, i když nic nenastavujeme
   };
 
   const json = await api("/customers", { method: "POST", body: [customer] });
@@ -250,7 +253,7 @@ async function syncUser(userId) {
   const ref = db.collection("users").doc(userId);
   const snap = await ref.get();
   if (!snap.exists) throw new Error(`Uživatel ${userId} neexistuje`);
-  const user = { id: snap.id, ...snap.data() };
+  const user = { ...snap.data(), id: snap.id };
 
   let customer =
     (user.dotykackaId && (await getCustomerById(user.dotykackaId))) ||
@@ -382,6 +385,97 @@ exports.assignCustomerToOrder = onCall({ secrets: [REFRESH_TOKEN] }, async (requ
     throw wrapError(e, "Připojení k účtu selhalo");
   }
 });
+
+// ════════════════════════════════════════════════════════════════════
+// 1b) Import stávajících zákazníků z Dotykačky do appky
+//     Spouští obsluha tlačítkem v admin appce. Založí účet v appce každému
+//     zákazníkovi z Dotykačky, který má e-mail a v appce ještě není.
+//     Členský kód = jeho stávající čárový kód z Dotykačky, jinak nový
+//     (ten do Dotykačky zapíše trigger onUserCreated).
+// ════════════════════════════════════════════════════════════════════
+async function listAllCustomers() {
+  const all = [];
+  for (let page = 1; page <= 200; page++) {
+    const json = await api(`/customers?limit=100&page=${page}`, { allow404: true });
+    const data = listData(json);
+    all.push(...data);
+    if (data.length < 100) break;
+  }
+  return all.filter((c) => !c.deleted);
+}
+
+function customerName(c) {
+  const name = [c.firstName, c.lastName].map((x) => String(x || "").trim()).filter(Boolean).join(" ");
+  return name || String(c.companyName || "").trim();
+}
+
+exports.importDotykackaCustomers = onCall(
+  { secrets: [REFRESH_TOKEN], timeoutSeconds: 540, memory: "512MiB" },
+  async (request) => {
+    await requireAdmin(request);
+    const dryRun = request.data && request.data.dryRun === true;
+
+    let customers;
+    try {
+      customers = await listAllCustomers();
+    } catch (e) {
+      throw wrapError(e, "Načtení zákazníků z Dotykačky selhalo");
+    }
+
+    const users = await db.collection("users").get();
+    const byEmail = new Set();
+    const byDotyId = new Set();
+    const codes = new Set();
+    users.docs.forEach((d) => {
+      if (d.get("email")) byEmail.add(normEmail(d.get("email")));
+      if (d.get("dotykackaId")) byDotyId.add(String(d.get("dotykackaId")));
+      if (d.get("memberCode")) codes.add(String(d.get("memberCode")));
+    });
+
+    const result = { totalInDotykacka: customers.length, imported: 0, alreadyInApp: 0, noEmail: 0, duplicateEmail: 0 };
+    const seenEmails = new Set();
+    let batch = db.batch();
+    let inBatch = 0;
+
+    for (const c of customers) {
+      const email = normEmail(c.email);
+      if (!email || !email.includes("@")) { result.noEmail++; continue; }
+      if (byEmail.has(email) || byDotyId.has(String(c.id))) { result.alreadyInApp++; continue; }
+      if (seenEmails.has(email)) { result.duplicateEmail++; continue; }
+      seenEmails.add(email);
+
+      let code = String(c.barcode || "").trim();
+      const hasCard = Boolean(code) && !codes.has(code);
+      if (!hasCard) code = await generateMemberCode();
+      codes.add(code);
+
+      result.imported++;
+      if (dryRun) continue;
+
+      const ref = db.collection("users").doc();
+      batch.set(ref, {
+        id: "",
+        name: customerName(c) || "Zákazník",
+        email,
+        phone: String(c.phone || "").replace(/\s+/g, ""),
+        points: 0,
+        totalPoints: 0,
+        dotykackaId: String(c.id),
+        memberCode: code,
+        // má-li kartu, je hotovo; jinak kód do Dotykačky zapíše onUserCreated
+        dotykackaSynced: hasCard,
+        importedFromDotykacka: true,
+        fcmToken: "",
+        createdAt: Timestamp.now(),
+      });
+      if (++inBatch === 400) { await batch.commit(); batch = db.batch(); inBatch = 0; }
+    }
+    if (inBatch > 0 && !dryRun) await batch.commit();
+
+    logger.info("Import zákazníků z Dotykačky", { dryRun, ...result });
+    return { dryRun, ...result };
+  }
+);
 
 // ════════════════════════════════════════════════════════════════════
 // 2) Diagnostika — ověří token, cloud a pobočku a zda pokladna odpovídá
@@ -529,6 +623,7 @@ exports.onUserCreated = onDocumentCreated(
     if (!event.data.get("memberCode")) {
       await ref.update({ memberCode: await generateMemberCode(), dotykackaSynced: false });
     }
+    if (event.data.get("dotykackaSynced") === true) return; // import se stávající kartou
     await syncUserSafe(userId);
   }
 );

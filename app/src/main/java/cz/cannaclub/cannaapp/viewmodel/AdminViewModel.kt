@@ -124,6 +124,27 @@ class AdminViewModel(
         }
     }
 
+    // ─────────────────────────────────────────────────────
+    // Import stávajících zákazníků z Dotykačky
+    // 1. preview (jen spočítá)  2. potvrzení  3. skutečný import
+    // ─────────────────────────────────────────────────────
+    private val _importState = MutableStateFlow<ImportState>(ImportState.Idle)
+    val importState: StateFlow<ImportState> = _importState.asStateFlow()
+
+    fun previewImport() = runImport(dryRun = true)
+    fun confirmImport() = runImport(dryRun = false)
+    fun dismissImport() { _importState.value = ImportState.Idle }
+
+    private fun runImport(dryRun: Boolean) {
+        viewModelScope.launch {
+            _importState.value = ImportState.Loading(dryRun)
+            _importState.value = dotykackaRepository.importCustomers(dryRun).fold(
+                onSuccess = { ImportState.Done(it) },
+                onFailure = { ImportState.Error(it.message ?: "Import selhal") }
+            )
+        }
+    }
+
     fun clearScannedUser() {
         _scannedUser.value = null
     }
@@ -206,4 +227,11 @@ sealed class DotykackaState {
     object Syncing  : DotykackaState()
     data class Assigned(val message: String) : DotykackaState()  // zákazník připojen k účtu
     data class Error(val message: String) : DotykackaState()
+}
+
+sealed class ImportState {
+    object Idle : ImportState()
+    data class Loading(val dryRun: Boolean) : ImportState()
+    data class Done(val result: DotykackaRepository.ImportResult) : ImportState()
+    data class Error(val message: String) : ImportState()
 }

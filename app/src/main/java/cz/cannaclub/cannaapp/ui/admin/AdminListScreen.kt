@@ -1,6 +1,12 @@
 package cz.cannaclub.cannaapp.ui.admin
 
 import androidx.compose.foundation.background
+import cz.cannaclub.cannaapp.viewmodel.ImportState
+import cz.cannaclub.cannaapp.ui.theme.PointsRed
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,6 +75,7 @@ fun AdminListScreen(
     val opState      by viewModel.operationState.collectAsState()
     val scannedUser  by viewModel.scannedUser.collectAsState()
     val dotykacka    by viewModel.dotykackaState.collectAsState()
+    val importState  by viewModel.importState.collectAsState()
 
     var selectedUser  by remember { mutableStateOf<User?>(null) }
     var openedByScan  by remember { mutableStateOf(false) }   // karta otevřená skenem → ukázat stav pokladny
@@ -244,6 +251,34 @@ fun AdminListScreen(
                         }
                         Text("→", fontSize = 20.sp, color = TextMuted)
                     }
+
+                    // ── Import zákazníků z Dotykačky ──────────
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(CardDefault)
+                            .clickable { viewModel.previewImport() }
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text  = "DOTYKAČKA",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextMuted
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text  = "Převzít zákazníky z pokladny",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextPrimary
+                            )
+                        }
+                        Text("→", fontSize = 20.sp, color = TextMuted)
+                    }
                     Spacer(
                         modifier = Modifier
                             .height(100.dp)
@@ -314,6 +349,13 @@ fun AdminListScreen(
         )
     }
 
+    // ── Import z Dotykačky ────────────────────────────────
+    ImportCustomersDialog(
+        state     = importState,
+        onConfirm = { viewModel.confirmImport() },
+        onDismiss = { viewModel.dismissImport() }
+    )
+
     // ── Add dialog ────────────────────────────────────────
     if (showAddDialog) {
         AddUserDialog(
@@ -324,4 +366,68 @@ fun AdminListScreen(
             }
         )
     }
+}
+
+@Composable
+private fun ImportCustomersDialog(
+    state: ImportState,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (state is ImportState.Idle) return
+
+    val loading = state is ImportState.Loading
+    AlertDialog(
+        onDismissRequest = { if (!loading) onDismiss() },
+        containerColor   = PillBackground,
+        title = {
+            Text(
+                text  = "Zákazníci z Dotykačky",
+                style = MaterialTheme.typography.headlineSmall,
+                color = TextPrimary
+            )
+        },
+        text = {
+            when (state) {
+                is ImportState.Loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Gold, strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text  = if (state.dryRun) "Načítám zákazníky z pokladny…" else "Zakládám účty…",
+                        color = TextMuted
+                    )
+                }
+                is ImportState.Done -> {
+                    val r = state.result
+                    Text(
+                        color = TextMuted,
+                        text  = if (r.dryRun) {
+                            "V Dotykačce je ${r.totalInDotykacka} zákazníků.\n\n" +
+                            "• převezme se: ${r.imported}\n" +
+                            "• už v appce jsou: ${r.alreadyInApp}\n" +
+                            "• bez e-mailu (nejde převzít): ${r.noEmail}\n\n" +
+                            "Převzatí zákazníci se přihlásí svým e-mailem a telefonem (nebo jménem, když telefon v pokladně nemají). " +
+                            "Body začínají na nule."
+                        } else {
+                            "Hotovo, převzato ${r.imported} zákazníků. Členské kódy se do Dotykačky zapíší během pár minut."
+                        }
+                    )
+                }
+                is ImportState.Error -> Text(text = state.message, color = PointsRed)
+                ImportState.Idle -> {}
+            }
+        },
+        confirmButton = {
+            if (state is ImportState.Done && state.result.dryRun && state.result.imported > 0) {
+                TextButton(onClick = onConfirm) { Text("Převzít ${state.result.imported}", color = Gold) }
+            }
+        },
+        dismissButton = {
+            if (!loading) {
+                TextButton(onClick = onDismiss) {
+                    Text(if (state is ImportState.Done && !state.result.dryRun) "Zavřít" else "Zrušit", color = TextMuted)
+                }
+            }
+        }
+    )
 }

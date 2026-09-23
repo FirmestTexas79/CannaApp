@@ -97,7 +97,7 @@ fun QrScannerDialog(
                                 it.setSurfaceProvider(previewView.surfaceProvider)
                             }
                             val options = BarcodeScannerOptions.Builder()
-                                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                                .setBarcodeFormats(Barcode.FORMAT_QR_CODE, Barcode.FORMAT_CODE_128)
                                 .build()
                             val scanner  = BarcodeScanning.getClient(options)
                             val analysis = ImageAnalysis.Builder()
@@ -158,7 +158,7 @@ fun QrScannerDialog(
                     Spacer(modifier = Modifier.height(20.dp))
 
                     Text(
-                        text  = "Namiřte na QR kód zákazníka",
+                        text  = "Namiřte na kód zákazníka",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White
                     )

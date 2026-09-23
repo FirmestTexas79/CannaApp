@@ -2,7 +2,7 @@
 
 ## Jak to funguje
 
-1. Každý zákazník v appce má **členský kód** (12 číslic, začíná `29`). Appka ho ukazuje jako QR i jako klasický čárový kód. Klepnutím se zvětší na celou obrazovku s jasem na maximum.
+1. Každý zákazník v appce má **členský kód** (12 číslic, začíná `29`). Appka ho ukazuje jako čárový kód s číslem pod ním. Přečte ho laserová i 2D čtečka, a když čtečka nezabere, dá se číslo opsat. Klepnutím se zvětší na celou obrazovku s jasem na maximum.
 2. Server tenhle kód zapíše zákazníkovi v Dotykačce do pole **Čárový kód** (najde ho podle e-mailu, případně ho založí). Pokud už tam zákazník čárový kód má, třeba z plastové karty, převezme ho naopak appka, takže stará karta funguje dál.
 3. Prodavač namarkuje zboží a **naskenuje telefon zákazníka čtečkou na pokladně**. Dotykačka podle čárového kódu sama načte zákazníka na účet.
 4. Účet se normálně zaplatí.
@@ -26,7 +26,7 @@ Appka s Dotykačkou **nekomunikuje přímo**. Refresh token nikdy nevyprší a d
 | **Cloud ID** | Krok 2: vrátí ho Dotykačka spolu s tokenem (`cloudid=…`) | `functions/.env` → `DOTYKACKA_CLOUD_ID` | ne |
 | **Branch ID** | Krok 3: vypíše ho testovací skript | `functions/.env` → `DOTYKACKA_BRANCH_ID` | ne |
 
-V `functions/.env` už jsou vyplněné hodnoty, které byly dřív v kódu (`304899966` / `191033401`). Krok 3 ověří, jestli sedí.
+V `functions/.env` už jsou vyplněné hodnoty, které byly dřív v kódu (Cloud ID `304899966`, Branch ID `191083401` — ověřeno testem).
 
 ---
 
@@ -112,6 +112,16 @@ První běh `syncDotykackaOrders` jen zapíše startovní čas (`integration/dot
 Když něco nejde: Firebase konzole → Functions → Logs (nebo `firebase functions:log`). Chybové hlášky jsou česky.
 
 ---
+
+## Převzetí stávajících zákazníků z Dotykačky
+
+V admin appce dole klikni na **Převzít zákazníky z pokladny**. Appka nejdřív jen spočítá, kolik zákazníků se převezme, a nic nezakládá. Teprve po potvrzení založí účty.
+
+- Převezmou se zákazníci **s e-mailem**, kteří v appce ještě nejsou. Bez e-mailu to nejde, protože e-mail slouží k přihlášení.
+- Kdo má v Dotykačce čárový kód (třeba plastovou kartu), dostane ho jako členský kód. Ostatním se kód vygeneruje a server ho do pár minut zapíše do Dotykačky.
+- Body začínají na nule.
+- Převzatý zákazník se v appce přihlásí e-mailem a telefonem. Když v Dotykačce telefon nemá, přihlásí se e-mailem a jménem a zadaný telefon se mu uloží.
+- Import jde spustit opakovaně, už převzaté zákazníky přeskočí.
 
 ## Chování, o kterém obsluha musí vědět
 
