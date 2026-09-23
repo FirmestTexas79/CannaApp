@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -89,15 +90,13 @@ fun SplashScreen(onFinished: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Image(
-            painter            = painterResource(id = R.drawable.cannalogo),
-            contentDescription = "Cannaclub",
+            painter            = painterResource(id = R.drawable.canna_wordmark),
+            contentDescription = "CannaClub",
             modifier           = Modifier
-                .fillMaxSize()
-                .padding(32.dp)
+                .fillMaxWidth(0.72f)
                 .alpha(alpha.value)
                 .scale(scale.value),
-            contentScale       = ContentScale.Fit,
-            colorFilter        = ColorFilter.colorMatrix(splashSharpenMatrix)
+            contentScale       = ContentScale.Fit
         )
     }
-}
+}

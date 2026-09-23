@@ -39,15 +39,39 @@ class AdminViewModel(
     private val _dotykackaState = MutableStateFlow<DotykackaState>(DotykackaState.Idle)
     val dotykackaState: StateFlow<DotykackaState> = _dotykackaState.asStateFlow()
 
+    // ── Řazení a přehled ─────────────────────────────────
+    private val _sortMode = MutableStateFlow(UserSort.NAME)
+    val sortMode: StateFlow<UserSort> = _sortMode.asStateFlow()
+    fun setSort(mode: UserSort) { _sortMode.value = mode }
+
+    private val _stats = MutableStateFlow(AdminStats())
+    val stats: StateFlow<AdminStats> = _stats.asStateFlow()
+
     init {
         viewModelScope.launch {
-            combine(_allUsers, _searchQuery) { users, query ->
-                if (query.isBlank()) users
+            _allUsers.collect { users ->
+                val weekAgo = System.currentTimeMillis() - 7L * 24 * 3600 * 1000
+                _stats.value = AdminStats(
+                    customers   = users.size,
+                    pointsOpen  = users.sumOf { it.points },
+                    newThisWeek = users.count { it.createdAt.toDate().time >= weekAgo }
+                )
+            }
+        }
+        viewModelScope.launch {
+            combine(_allUsers, _searchQuery, _sortMode) { users, query, sort ->
+                val filtered = if (query.isBlank()) users
                 else users.filter { user ->
                     user.name.contains(query, ignoreCase = true) ||
                             user.email.contains(query, ignoreCase = true) ||
                             user.phone.contains(query, ignoreCase = true) ||
                             user.memberCode.contains(query)
+                }
+                val collator = java.text.Collator.getInstance(java.util.Locale("cs", "CZ"))
+                when (sort) {
+                    UserSort.NAME   -> filtered.sortedWith { a, b -> collator.compare(a.name, b.name) }
+                    UserSort.POINTS -> filtered.sortedByDescending { it.points }
+                    UserSort.NEWEST -> filtered.sortedByDescending { it.createdAt.toDate().time }
                 }
             }.collect { filtered ->
                 _filteredUsers.value = filtered
@@ -81,6 +105,11 @@ class AdminViewModel(
                 _allUsers.value = users
             }
         }
+    }
+
+    /** Jen pro náhled vzhledu (DesignPreviewActivity v debug buildu) — naplní seznam bez Firebase. */
+    fun setUsersForPreview(users: List<User>) {
+        _allUsers.value = users
     }
 
     fun onSearchQueryChange(query: String) {
@@ -235,3 +264,11 @@ sealed class ImportState {
     data class Done(val result: DotykackaRepository.ImportResult) : ImportState()
     data class Error(val message: String) : ImportState()
 }
+
+enum class UserSort(val label: String) { NAME("A–Z"), POINTS("Body"), NEWEST("Nejnovější") }
+
+data class AdminStats(
+    val customers: Int = 0,
+    val pointsOpen: Int = 0,     // nevyčerpané body = závazek v Kč
+    val newThisWeek: Int = 0
+)

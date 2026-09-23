@@ -3,8 +3,10 @@ package cz.cannaclub.cannaapp
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,13 +16,35 @@ import cz.cannaclub.cannaapp.navigation.CannaNavGraph
 import cz.cannaclub.cannaapp.service.CannaFirebaseMessagingService
 import cz.cannaclub.cannaapp.ui.theme.Background
 import cz.cannaclub.cannaapp.ui.theme.CannaAppTheme
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/** Požadavky ze zkratek na ikoně appky (zatím jen "Členská kartička"). */
+object ShortcutRequests {
+    const val ACTION_SHOW_CARD = "cz.cannaclub.cannaapp.SHOW_CARD"
+
+    private val _showCard = MutableStateFlow(false)
+    val showCard: StateFlow<Boolean> = _showCard.asStateFlow()
+
+    fun handle(intent: Intent?) {
+        if (intent?.action == ACTION_SHOW_CARD) _showCard.value = true
+    }
+
+    fun consume() { _showCard.value = false }
+}
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Světlé lišty s tmavými ikonami — appka má krémové pozadí i v tmavém režimu systému
+        enableEdgeToEdge(
+            statusBarStyle     = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+        )
         createNotificationChannel()
+        ShortcutRequests.handle(intent)
 
         setContent {
             CannaAppTheme {
@@ -32,6 +56,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        ShortcutRequests.handle(intent)
     }
 
     // Kanál musí existovat dřív, než dorazí první push (Android 8+).

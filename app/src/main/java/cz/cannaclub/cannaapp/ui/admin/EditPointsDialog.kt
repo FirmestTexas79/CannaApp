@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import cz.cannaclub.cannaapp.model.User
+import cz.cannaclub.cannaapp.ui.components.MemberBarcodeCompact
 import cz.cannaclub.cannaapp.ui.theme.BorderNormal
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
 import cz.cannaclub.cannaapp.ui.theme.Gold
@@ -124,14 +125,14 @@ fun EditPointsDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted
                     )
-                    if (user.memberCode.isNotBlank()) {
-                        Text(
-                            text  = "Kód: ${user.memberCode}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
-                    }
+
                 }
+            }
+
+            // ── Členská kartička (čárový kód) ─────────────
+            if (user.memberCode.isNotBlank()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                MemberBarcodeCompact(code = user.memberCode)
             }
 
             // ── Stav připojení k účtu na pokladně ─────────
@@ -153,7 +154,7 @@ fun EditPointsDialog(
                 verticalAlignment     = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = user.rank.icon, fontSize = 18.sp)
+                    cz.cannaclub.cannaapp.ui.components.RankBadge(rank = user.rank, size = 22.dp)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text  = user.rank.label,

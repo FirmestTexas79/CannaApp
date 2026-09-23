@@ -42,57 +42,15 @@ import com.google.zxing.MultiFormatWriter
 import cz.cannaclub.cannaapp.ui.theme.TextMuted
 
 /**
- * Členská karta: jeden čárový kód (Code 128) + číslo pod ním.
- * Code 128 přečte laserová i 2D čtečka, QR jen 2D — proto jen čárový kód.
- * Když čtečka nezabere, prodavač číslo opíše.
- * Prodavač ji naskenuje čtečkou přímo na pokladně Dotykačka — ta podle pole
- * "Čárový kód" sama načte zákazníka na účet. Stejný kód umí i admin appka.
+ * Členský kód: jeden čárový kód (Code 128) + číslo pod ním.
+ * Code 128 přečte laserová i 2D čtečka. Když čtečka nezabere, prodavač číslo opíše.
+ * Pokladna Dotykačka podle pole "Čárový kód" sama načte zákazníka na účet.
  *
- * [code]  = členský kód (nebo ID, dokud ho server nepřidělí)
- * [ready] = false → kód ještě není propojený s Dotykačkou
+ * Zákazník: MemberCardOverlay (celá obrazovka). Obsluha: MemberBarcodeCompact v kartě zákazníka.
  */
-@Composable
-fun QrCodeCard(code: String, ready: Boolean = true) {
-    var fullscreen by remember { mutableStateOf(false) }
-    val barcode = remember(code) { renderCode(code, BarcodeFormat.CODE_128, 800, 200) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(androidx.compose.ui.graphics.Color.White)
-            .clickable { fullscreen = true }
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text  = "VÁŠ ČLENSKÝ KÓD",
-            style = MaterialTheme.typography.labelSmall,
-            color = TextMuted
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-
-        CodeImages(barcode = barcode, height = 110, code = code, showDigits = ready)
-
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text      = if (ready) "Ukažte u pokladny · klepnutím zvětšíte"
-                        else "Kód pro pokladnu se připravuje…",
-            style     = MaterialTheme.typography.bodySmall,
-            color     = TextMuted,
-            textAlign = TextAlign.Center
-        )
-    }
-
-    if (fullscreen) {
-        FullscreenCode(barcode = barcode, code = code, showDigits = ready) {
-            fullscreen = false
-        }
-    }
-}
 
 @Composable
-private fun CodeImages(barcode: Bitmap?, height: Int, code: String, showDigits: Boolean) {
+internal fun CodeImages(barcode: Bitmap?, height: Int, code: String, showDigits: Boolean) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -127,9 +85,18 @@ private fun CodeImages(barcode: Bitmap?, height: Int, code: String, showDigits: 
     }
 }
 
-/** Celá obrazovka bílá + jas na maximum — čtečky tak displej přečtou mnohem líp. */
+/**
+ * Celá obrazovka bílá + jas na maximum + displej nezhasne.
+ * Čtečky tak displej přečtou mnohem líp.
+ */
 @Composable
-private fun FullscreenCode(barcode: Bitmap?, code: String, showDigits: Boolean, onDismiss: () -> Unit) {
+internal fun FullscreenCode(
+    barcode: Bitmap?,
+    code: String,
+    showDigits: Boolean,
+    holderName: String? = null,
+    onDismiss: () -> Unit
+) {
     Dialog(
         onDismissRequest = onDismiss,
         properties       = DialogProperties(usePlatformDefaultWidth = false)
@@ -140,6 +107,8 @@ private fun FullscreenCode(barcode: Bitmap?, code: String, showDigits: Boolean, 
                 val attrs = w.attributes
                 attrs.screenBrightness = 1f
                 w.attributes = attrs
+                w.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
             }
             onDispose { }
         }
@@ -152,19 +121,114 @@ private fun FullscreenCode(barcode: Bitmap?, code: String, showDigits: Boolean, 
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                androidx.compose.foundation.Image(
+                    painter            = androidx.compose.ui.res.painterResource(cz.cannaclub.cannaapp.R.drawable.canna_wordmark),
+                    contentDescription = "CannaClub",
+                    modifier           = Modifier.height(26.dp)
+                )
+                if (!holderName.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text  = holderName,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = androidx.compose.ui.graphics.Color.Black
+                    )
+                }
+                Spacer(modifier = Modifier.height(36.dp))
                 CodeImages(barcode = barcode, height = 180, code = code, showDigits = showDigits)
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(36.dp))
                 Text(
-                    text  = "Klepnutím zavřete",
+                    text      = if (showDigits) "Ukaž prodavači k naskenování"
+                                else "Kód pro pokladnu se ještě připravuje, zkus to za chvíli",
+                    style     = MaterialTheme.typography.bodyMedium,
+                    color     = TextMuted,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text  = "Klepnutím zavřeš",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
+                    color = cz.cannaclub.cannaapp.ui.theme.TextFaint
                 )
             }
         }
     }
 }
 
-private fun renderCode(text: String, format: BarcodeFormat, width: Int, height: Int): Bitmap? = try {
+/**
+ * Členská kartička přes celou obrazovku — z hlavní obrazovky i ze zkratky na ikoně.
+ * Kreslí se přímo v okně aktivity (ne jako dialog), takže bílá sahá i pod stavovou lištu.
+ * Po dobu zobrazení: jas na maximum, displej nezhasne. Zpět nebo klepnutí zavře.
+ */
+@Composable
+fun MemberCardOverlay(code: String, ready: Boolean, holderName: String, onDismiss: () -> Unit) {
+    val barcode = remember(code) { renderCode(code, BarcodeFormat.CODE_128, 800, 200) }
+    val view    = LocalView.current
+
+    androidx.activity.compose.BackHandler { onDismiss() }
+    DisposableEffect(Unit) {
+        val window = (view.context as? android.app.Activity)?.window
+        val before = window?.attributes?.screenBrightness
+        window?.let { w ->
+            w.attributes = w.attributes.apply { screenBrightness = 1f }
+            w.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            window?.let { w ->
+                w.attributes = w.attributes.apply {
+                    screenBrightness = before ?: android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                }
+                w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(androidx.compose.ui.graphics.Color.White)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication        = null
+            ) { onDismiss() }
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.compose.foundation.Image(
+                painter            = androidx.compose.ui.res.painterResource(cz.cannaclub.cannaapp.R.drawable.canna_wordmark),
+                contentDescription = "CannaClub",
+                modifier           = Modifier.height(26.dp)
+            )
+            if (holderName.isNotBlank()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text  = holderName,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = androidx.compose.ui.graphics.Color.Black
+                )
+            }
+            Spacer(modifier = Modifier.height(36.dp))
+            CodeImages(barcode = barcode, height = 180, code = code, showDigits = ready)
+            Spacer(modifier = Modifier.height(36.dp))
+            Text(
+                text      = if (ready) "Ukaž prodavači k naskenování"
+                            else "Kód pro pokladnu se ještě připravuje, zkus to za chvíli",
+                style     = MaterialTheme.typography.bodyMedium,
+                color     = TextMuted,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text  = "Klepnutím zavřeš",
+                style = MaterialTheme.typography.bodySmall,
+                color = cz.cannaclub.cannaapp.ui.theme.TextFaint
+            )
+        }
+    }
+}
+
+internal fun renderCode(text: String, format: BarcodeFormat, width: Int, height: Int): Bitmap? = try {
     val hints = mapOf<EncodeHintType, Any>(EncodeHintType.MARGIN to 10)   // tichá zóna kolem kódu
     val matrix = MultiFormatWriter().encode(text, format, width, height, hints)
     val pixels = IntArray(matrix.width * matrix.height) { i ->
@@ -174,4 +238,37 @@ private fun renderCode(text: String, format: BarcodeFormat, width: Int, height: 
 } catch (e: Exception) {
     android.util.Log.e("MemberCode", "Kód se nepodařilo vykreslit", e)
     null
+}
+
+/**
+ * Čárový kód zákazníka pro obsluhu (karta zákazníka v adminu).
+ * Klepnutím se zvětší na celou obrazovku — dá se naskenovat čtečkou
+ * pokladny i z tabletu/telefonu obsluhy, když zákazník nemá telefon u sebe.
+ */
+@Composable
+fun MemberBarcodeCompact(code: String) {
+    var fullscreen by remember { mutableStateOf(false) }
+    val barcode = remember(code) { renderCode(code, BarcodeFormat.CODE_128, 800, 200) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(androidx.compose.ui.graphics.Color.White)
+            .clickable { fullscreen = true }
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        CodeImages(barcode = barcode, height = 56, code = code, showDigits = true)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text  = "Klepnutím zvětšíte",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextMuted
+        )
+    }
+
+    if (fullscreen) {
+        FullscreenCode(barcode = barcode, code = code, showDigits = true) { fullscreen = false }
+    }
 }

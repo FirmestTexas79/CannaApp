@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -79,11 +80,13 @@ private val PillHorizontalPadding = 28.dp
 fun LoginScreen(
     viewModel: UserViewModel,
     onLoginSuccess: () -> Unit,
-    onAdminClick: () -> Unit
+    onAdminClick: () -> Unit,
+    onRegisterClick: () -> Unit = {}
 ) {
     var name  by remember { mutableStateOf(viewModel.savedName) }
     var email by remember { mutableStateOf(viewModel.savedEmail) }
     var phone by remember { mutableStateOf(viewModel.savedPhone) }
+    cz.cannaclub.cannaapp.ui.components.SystemBarsAppearance(lightBackground = true)
 
     val loginState        by viewModel.loginState.collectAsState()
     val focusManager      = LocalFocusManager.current
@@ -148,30 +151,34 @@ fun LoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
-                // ── Logo Cannaclub ────────────────────────────
+                // ── Logo + nadpis ─────────────────────────────
                 AnimatedVisibility(
                     visible = true,
                     enter   = fadeIn() + slideInVertically { -40 }
                 ) {
                     Image(
-                        painter            = painterResource(id = R.drawable.cannalogo),
-                        contentDescription = "Cannaclub logo",
-                        modifier           = Modifier
-                            .fillMaxWidth(0.85f)
-                            .height(180.dp),
-                        contentScale       = ContentScale.Fit
+                        painter            = painterResource(id = R.drawable.canna_wordmark),
+                        contentDescription = "CannaClub",
+                        modifier           = Modifier.height(34.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(28.dp))
 
                 Text(
-                    text  = "VĚRNOSTNÍ PROGRAM",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted,
+                    text  = "Vítej zpět",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text      = "Přihlas se ke svým bodům",
+                    style     = MaterialTheme.typography.bodyMedium,
+                    color     = TextMuted,
+                    textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(28.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 // ── Formulář ──────────────────────────────────
                 CannaTextField(
@@ -251,13 +258,27 @@ fun LoginScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick  = { onRegisterClick() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape    = RoundedCornerShape(16.dp),
+                    border   = androidx.compose.foundation.BorderStroke(1.5.dp, Sage.copy(alpha = 0.5f)),
+                    colors   = ButtonDefaults.outlinedButtonColors(contentColor = Sage)
+                ) {
+                    Text(text = "NEMÁM ÚČET · REGISTRACE", style = MaterialTheme.typography.labelLarge)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text  = "Přístup pro obsluhu →",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        textDecoration = TextDecoration.Underline
-                    ),
+                    text  = "Přístup pro obsluhu",
+                    style = MaterialTheme.typography.bodySmall,
                     color     = TextFaint,
                     textAlign = TextAlign.Center,
                     modifier  = Modifier

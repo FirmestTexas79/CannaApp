@@ -7,6 +7,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import cz.cannaclub.cannaapp.model.Transaction
 import cz.cannaclub.cannaapp.model.User
 import cz.cannaclub.cannaapp.preferences.UserPreferences
+import cz.cannaclub.cannaapp.repository.RegisterResult
 import cz.cannaclub.cannaapp.repository.UserRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,14 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _loginState = MutableStateFlow<LoginState>(LoginState.Idle)
     val loginState: StateFlow<LoginState> = _loginState.asStateFlow()
+
+    /** Kolik bodů právě přibylo → dashboard ukáže oslavu. null = nic. */
+    private val _celebration = MutableStateFlow<Int?>(null)
+    val celebration: StateFlow<Int?> = _celebration.asStateFlow()
+
+    /** Úvodní "Jak to funguje" (poprvé po přihlášení, nebo z profilu). */
+    private val _showOnboarding = MutableStateFlow(false)
+    val showOnboarding: StateFlow<Boolean> = _showOnboarding.asStateFlow()
 
     // Živé Firestore listenery — rušíme je při odhlášení / novém přihlášení
     private var userJob: Job? = null
@@ -62,9 +71,44 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
                 observeUser(user.id)
                 loadTransactions(user.id)
                 saveFcmToken(user.id)
+                maybeShowOnboarding()
                 _loginState.value = LoginState.Success
             } else {
                 _loginState.value = LoginState.Error("Zákazník nenalezen")
+            }
+        }
+    }
+
+    /** Registrace nového zákazníka → rovnou přihlášení. */
+    fun register(name: String, email: String, phone: String, consent: Boolean) {
+        val digits = phone.filter { it.isDigit() }
+        val error = when {
+            name.trim().split(Regex("\\s+")).size < 2 -> "Vyplň jméno i příjmení"
+            !Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(email.trim()) -> "Neplatný e-mail"
+            digits.length < 9                            -> "Neplatné telefonní číslo"
+            !consent                                     -> "Potvrď, že je ti 18 let a souhlasíš se zpracováním údajů"
+            else -> null
+        }
+        if (error != null) {
+            _loginState.value = LoginState.Error(error)
+            return
+        }
+
+        viewModelScope.launch {
+            _loginState.value = LoginState.Loading
+            _loginState.value = when (val r = repository.registerUser(name, email, phone)) {
+                is RegisterResult.Success -> {
+                    val user = r.user
+                    userPrefs.saveUser(user.name, user.email, user.phone, user.id)
+                    _currentUser.value = user
+                    observeUser(user.id)
+                    loadTransactions(user.id)
+                    saveFcmToken(user.id)
+                    maybeShowOnboarding()
+                    LoginState.Success
+                }
+                RegisterResult.DuplicateEmail -> LoginState.Error("Tento e-mail už je registrovaný. Přihlas se.")
+                RegisterResult.Error          -> LoginState.Error("Registrace se nepovedla, zkus to znovu")
             }
         }
     }
@@ -79,9 +123,42 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
         userJob?.cancel()
         userJob = viewModelScope.launch {
             repository.getUserFlow(userId).collect { user ->
-                if (user != null) _currentUser.value = user
+                if (user != null) {
+                    _currentUser.value = user
+                    checkPointsGain(user)
+                }
             }
         }
+    }
+
+    /**
+     * Porovná body s tím, co zákazník viděl naposledy. Přibyly → oslava,
+     * i když body dorazily, zatímco byla appka zavřená.
+     */
+    private fun checkPointsGain(user: User) {
+        val seen = userPrefs.getSeenPoints(user.id)
+        when {
+            seen == null        -> userPrefs.setSeenPoints(user.id, user.points)   // první spuštění, nic neslavit
+            user.points > seen  -> _celebration.value = user.points - seen
+            user.points < seen  -> userPrefs.setSeenPoints(user.id, user.points)   // uplatnil odměnu
+        }
+    }
+
+    /** Oslava se ukázala → uložit aktuální stav jako viděný. */
+    fun celebrationShown() {
+        _celebration.value = null
+        _currentUser.value?.let { userPrefs.setSeenPoints(it.id, it.points) }
+    }
+
+    private fun maybeShowOnboarding() {
+        if (!userPrefs.isOnboardingDone()) _showOnboarding.value = true
+    }
+
+    fun openOnboarding() { _showOnboarding.value = true }
+
+    fun onboardingFinished() {
+        _showOnboarding.value = false
+        userPrefs.setOnboardingDone()
     }
 
     private fun loadTransactions(userId: String) {
@@ -101,6 +178,7 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
 
         _currentUser.value  = null
         _transactions.value = emptyList()
+        _celebration.value  = null
         _loginState.value   = LoginState.Idle
         // Údaje necháme předvyplněné, jen vypneme automatické přihlášení
         userPrefs.markLoggedOut()

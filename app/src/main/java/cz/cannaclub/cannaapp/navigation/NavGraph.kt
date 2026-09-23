@@ -12,6 +12,7 @@ import cz.cannaclub.cannaapp.ui.admin.AdminLoginScreen
 import cz.cannaclub.cannaapp.ui.components.ProductShowcaseScreen
 import cz.cannaclub.cannaapp.ui.user.DashboardScreen
 import cz.cannaclub.cannaapp.ui.user.LoginScreen
+import cz.cannaclub.cannaapp.ui.user.RegisterScreen
 import cz.cannaclub.cannaapp.ui.user.SplashScreen
 import cz.cannaclub.cannaapp.viewmodel.AdminViewModel
 import cz.cannaclub.cannaapp.viewmodel.LoginState
@@ -22,6 +23,7 @@ object Routes {
 
     const val SPLASH            = "splash"
     const val USER_LOGIN        = "user_login"
+    const val REGISTER          = "register"
     const val DASHBOARD         = "dashboard"
     const val ADMIN_LOGIN       = "admin_login"
     const val ADMIN_LIST        = "admin_list"
@@ -73,7 +75,23 @@ fun CannaNavGraph(
                 },
                 onAdminClick = {
                     navController.navigate(Routes.ADMIN_LOGIN)
+                },
+                onRegisterClick = {
+                    navController.navigate(Routes.REGISTER)
                 }
+            )
+        }
+
+        // ── Registrace ────────────────────────────────────────
+        composable(Routes.REGISTER) {
+            RegisterScreen(
+                viewModel    = userViewModel,
+                onRegistered = {
+                    navController.navigate(Routes.DASHBOARD) {
+                        popUpTo(Routes.USER_LOGIN) { inclusive = true }
+                    }
+                },
+                onBack = { navController.popBackStack() }
             )
         }
 

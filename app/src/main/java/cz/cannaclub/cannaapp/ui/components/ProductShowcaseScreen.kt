@@ -112,6 +112,7 @@ fun ProductShowcaseScreen(
 
     // ── Pozadí shodné s adminem nebo uživatelem ───────────────────
     val bg = if (isAdmin) AdminBackground else cz.cannaclub.cannaapp.ui.theme.Background
+    SystemBarsAppearance(lightBackground = !isAdmin)
 
     Box(
         modifier = Modifier
@@ -159,7 +160,7 @@ fun ProductShowcaseScreen(
                             )
                         }
                         IconButton(onClick = onBack) {
-                            Text("←", fontSize = 22.sp, color = TextMuted)
+                            CannaIcon(id = cz.cannaclub.cannaapp.R.drawable.ic_close, tint = TextMuted, size = 22.dp)
                         }
                     }
                     Spacer(modifier = Modifier.height(6.dp))
@@ -175,7 +176,7 @@ fun ProductShowcaseScreen(
                 if (products.isEmpty()) {
                     item {
                         Text(
-                            text      = if (isAdmin) "Žádné produkty. Přidej první! →" else "Brzy přidáme novinky 🌿",
+                            text      = if (isAdmin) "Žádné produkty. Přidej první tlačítkem +" else "Brzy přidáme novinky",
                             style     = MaterialTheme.typography.bodyMedium,
                             color     = TextMuted,
                             textAlign = TextAlign.Center,
@@ -343,7 +344,7 @@ private fun ProductCard(
                     contentScale       = ContentScale.Fit
                 )
             } else {
-                Text("🌿", fontSize = 32.sp)
+                CannaIcon(id = cz.cannaclub.cannaapp.R.drawable.ic_leaf, tint = Sage.copy(alpha = 0.5f), size = 36.dp)
             }
         }
     }
@@ -379,7 +380,7 @@ private fun ProductCard(
             if (isAdmin) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text     = "✏  upravit",
+                    text     = "Upravit",
                     style    = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     modifier = Modifier
@@ -467,7 +468,7 @@ private fun ProductDetailDialog(
                             contentScale       = ContentScale.Fit
                         )
                     } else {
-                        Text("🌿", fontSize = 72.sp)
+                        CannaIcon(id = cz.cannaclub.cannaapp.R.drawable.ic_leaf, tint = Sage.copy(alpha = 0.4f), size = 88.dp)
                     }
                 }
 
@@ -519,7 +520,7 @@ private fun ProductDetailDialog(
 
                 if (isAdmin) {
                     Text(
-                        text     = "✏  Upravit",
+                        text     = "Upravit",
                         style    = MaterialTheme.typography.labelSmall,
                         color    = TextMuted,
                         modifier = Modifier
@@ -532,4 +533,4 @@ private fun ProductDetailDialog(
             }
         }
     }
-}
+}

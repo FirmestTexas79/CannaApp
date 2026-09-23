@@ -14,6 +14,8 @@ class UserPreferences(context: Context) {
         private const val KEY_PHONE     = "user_phone"
         private const val KEY_USER_ID   = "user_id"      // kdo je právě přihlášený (pro FCM onNewToken)
         private const val KEY_LOGGED_IN = "logged_in"    // automatické přihlášení po spuštění
+        private const val KEY_ONBOARDED = "onboarding_done"
+        private const val KEY_SEEN_PTS  = "seen_points_"  // + userId → poslední zobrazený stav bodů
     }
 
     fun saveUser(name: String, email: String, phone: String, userId: String) {
@@ -39,6 +41,17 @@ class UserPreferences(context: Context) {
     /** Odhlášení — údaje zůstanou předvyplněné, jen se přestane automaticky přihlašovat. */
     fun markLoggedOut() {
         prefs.edit().putBoolean(KEY_LOGGED_IN, false).apply()
+    }
+
+    /** Úvodní "Jak to funguje" se ukazuje jen jednou na zařízení. */
+    fun isOnboardingDone(): Boolean = prefs.getBoolean(KEY_ONBOARDED, false)
+    fun setOnboardingDone() { prefs.edit().putBoolean(KEY_ONBOARDED, true).apply() }
+
+    /** Kolik bodů zákazník naposledy viděl — podle toho se pozná, že přibyly (oslava). */
+    fun getSeenPoints(userId: String): Int? =
+        if (prefs.contains(KEY_SEEN_PTS + userId)) prefs.getInt(KEY_SEEN_PTS + userId, 0) else null
+    fun setSeenPoints(userId: String, points: Int) {
+        prefs.edit().putInt(KEY_SEEN_PTS + userId, points).apply()
     }
 
     fun clearUser() {

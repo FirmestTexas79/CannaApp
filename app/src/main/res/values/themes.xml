@@ -3,6 +3,8 @@
     <style name="Theme.CannaApp" parent="Theme.AppCompat.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <!-- Krémové pozadí hned od spuštění (žádný tmavý záblesk před splashem) -->
+        <item name="android:windowBackground">@color/canna_cream</item>
     </style>
-</resources>
+</resources>

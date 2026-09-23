@@ -80,6 +80,7 @@ fun AdminLoginScreen(
     var password by remember { mutableStateOf("") }
 
     val loginState    by viewModel.loginState.collectAsState()
+    cz.cannaclub.cannaapp.ui.components.SystemBarsAppearance(lightBackground = false)
     val focusManager  = LocalFocusManager.current
     val snackbarState = remember { SnackbarHostState() }
 
@@ -150,7 +151,7 @@ fun AdminLoginScreen(
                         .background(CardDefault),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "🔐", fontSize = 36.sp)
+                    cz.cannaclub.cannaapp.ui.components.CannaIcon(id = cz.cannaclub.cannaapp.R.drawable.ic_user, tint = cz.cannaclub.cannaapp.ui.theme.Gold, size = 36.dp)
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -255,7 +256,7 @@ fun AdminLoginScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "← Zpět na zákaznický login",
+                    text = "Zpět na přihlášení zákazníka",
                     style = MaterialTheme.typography.bodySmall.copy(
                         textDecoration = TextDecoration.Underline
                     ),
@@ -333,4 +334,4 @@ fun AdminTextField(
             )
         )
     }
-}
+}

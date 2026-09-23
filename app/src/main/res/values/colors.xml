@@ -3,4 +3,5 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="notification_color">#4A6741</color>
-</resources>
+    <color name="canna_cream">#FFD9CEBC</color>
+</resources>

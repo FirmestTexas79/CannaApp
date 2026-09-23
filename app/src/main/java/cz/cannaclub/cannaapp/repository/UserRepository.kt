@@ -219,6 +219,44 @@ class UserRepository {
         }
     }
 
+    /**
+     * Samoregistrace zákazníka z appky. Členský kód a zákazníka v Dotykačce
+     * doplní server (Cloud Function onUserCreated) hned po založení.
+     */
+    suspend fun registerUser(name: String, email: String, phone: String): RegisterResult {
+        return try {
+            val normalizedEmail = email.trim().lowercase()
+            val existing = usersCol.whereEqualTo("email", normalizedEmail).limit(1).get().await()
+            if (!existing.isEmpty) return RegisterResult.DuplicateEmail
+
+            val ref = usersCol.document()
+            val data = mapOf(
+                "id"                 to "",
+                "name"               to name.trim().replace(Regex("\\s+"), " "),
+                "email"              to normalizedEmail,
+                "phone"              to phone.trim(),
+                "points"             to 0,
+                "totalPoints"        to 0,
+                "dotykackaId"        to "",
+                "fcmToken"           to "",
+                "memberCode"         to "",
+                "selfRegistered"     to true,
+                "consentAt"          to com.google.firebase.Timestamp.now(),
+                "createdAt"          to com.google.firebase.Timestamp.now()
+            )
+            ref.set(data).await()
+            val user = User(
+                id    = ref.id,
+                name  = data["name"] as String,
+                email = normalizedEmail,
+                phone = phone.trim()
+            )
+            RegisterResult.Success(user)
+        } catch (e: Exception) {
+            RegisterResult.Error
+        }
+    }
+
     // Uloží FCM token do Firestore
     suspend fun saveFcmToken(userId: String, token: String): Boolean {
         return try {
@@ -237,4 +275,10 @@ sealed class AddUserResult {
     object Success        : AddUserResult()
     object DuplicateEmail : AddUserResult()
     object Error          : AddUserResult()
+}
+
+sealed class RegisterResult {
+    data class Success(val user: User) : RegisterResult()
+    object DuplicateEmail : RegisterResult()
+    object Error          : RegisterResult()
 }

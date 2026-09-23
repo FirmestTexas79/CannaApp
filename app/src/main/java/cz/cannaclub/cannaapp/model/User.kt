@@ -29,14 +29,14 @@ data class User(
             .joinToString("") { it.first().uppercase() }
 
     // ── Rank podle celkových bodů ─────────────────────────
+    @get:Exclude
     val rank: MemberRank
-        get() = when {
-            totalPoints >= 2500 -> MemberRank.RODINA
-            totalPoints >= 1000 -> MemberRank.ZLATY
-            totalPoints >= 500  -> MemberRank.STRIBRNY
-            totalPoints >= 250  -> MemberRank.BRONZOVY
-            else                -> MemberRank.ZAKAZNIK
-        }
+        get() = MemberRank.forPoints(totalPoints)
+
+    /** Křestní jméno pro oslovení. */
+    @get:Exclude
+    val firstName: String
+        get() = name.trim().split(Regex("\\s+")).firstOrNull().orEmpty()
 }
 
 enum class MemberRank(
@@ -48,5 +48,20 @@ enum class MemberRank(
     BRONZOVY("Bronzový",  "🥉", 250),
     STRIBRNY("Stříbrný",  "🥈", 500),
     ZLATY   ("Zlatý",     "🥇", 1000),
-    RODINA  ("Rodina",    "💚", 2500)
+    RODINA  ("Rodina",    "💚", 2500);
+
+    /** Následující rank, nebo null u nejvyššího. */
+    val next: MemberRank?
+        get() = entries.getOrNull(ordinal + 1)
+
+    /** Postup k dalšímu ranku 0..1 (u nejvyššího 1). */
+    fun progress(totalPoints: Int): Float {
+        val n = next ?: return 1f
+        return ((totalPoints - requiredPoints).toFloat() / (n.requiredPoints - requiredPoints)).coerceIn(0f, 1f)
+    }
+
+    companion object {
+        fun forPoints(totalPoints: Int): MemberRank =
+            entries.last { totalPoints >= it.requiredPoints }
+    }
 }

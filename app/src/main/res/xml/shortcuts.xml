@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Podržením ikony appky → "Kartička" rovnou otevře členský kód pro pokladnu -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="member_card"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_card"
+        android:shortcutShortLabel="@string/shortcut_card_short"
+        android:shortcutLongLabel="@string/shortcut_card_long">
+        <intent
+            android:action="cz.cannaclub.cannaapp.SHOW_CARD"
+            android:targetPackage="cz.cannaclub.cannaapp"
+            android:targetClass="cz.cannaclub.cannaapp.MainActivity" />
+    </shortcut>
+</shortcuts>

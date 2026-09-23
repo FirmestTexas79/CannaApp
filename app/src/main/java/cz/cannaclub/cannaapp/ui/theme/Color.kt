@@ -36,6 +36,20 @@ val TextPrimary     = Color(0xFF1C1207)
 val TextMuted       = Color(0xFF6B5A3E)
 val TextFaint       = Color(0xFF9A8B72)
 
+// ── Značka a hero karta ───────────────────────────────────────
+val Brand           = Color(0xFF526935)   // zelená z loga CannaClub
+val Forest          = Color(0xFF26391F)   // nejtmavší zelená — spodek gradientu karty
+val OnBrand         = Color(0xFFF7F0DE)   // krémový text na zelené
+val Paper           = Color(0xFFFFFCF5)   // "papírová" bílá — kartička s kódem, dlaždice
+val Honey           = Color(0xFFD9A441)   // oslava bodů, zvýraznění
+
+// ── Barvy ranků ───────────────────────────────────────────────
+val RankSprout      = Color(0xFF7C9A5E)
+val RankBronze      = Color(0xFFA86B3C)
+val RankSilver      = Color(0xFF8A9096)
+val RankGold        = Color(0xFFC39A2B)
+val RankFamily      = Color(0xFF3E5E35)
+
 // ── Dekorativní prvky ─────────────────────────────────────────
 val LeafDecor       = Color(0xBB3E5E35)   // tmavě zelená — na světlém béžovém pozadí
-val LeafDecorAdmin  = Color(0x55F5EDD8)   // světlá krémová — na tmavém admin pozadí
+val LeafDecorAdmin  = Color(0x55F5EDD8)   // světlá krémová — na tmavém admin pozadí

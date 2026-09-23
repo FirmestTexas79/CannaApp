@@ -1,6 +1,7 @@
 package cz.cannaclub.cannaapp.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,7 +53,8 @@ fun UserPillComponent(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(CardHover),
+                .background(CardHover)
+                .border(2.dp, user.rank.color, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -85,10 +87,10 @@ fun UserPillComponent(
                 color = Sage
             )
             Text(
-                text  = "bodů",
+                text  = "b",
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                 color = TextMuted
             )
         }
     }
-}
+}

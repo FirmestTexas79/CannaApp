@@ -44,7 +44,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import cz.cannaclub.cannaapp.R
 import cz.cannaclub.cannaapp.model.User
+import cz.cannaclub.cannaapp.ui.components.CannaIcon
+import cz.cannaclub.cannaapp.ui.components.SectionLabel
+import cz.cannaclub.cannaapp.ui.components.SystemBarsAppearance
+import cz.cannaclub.cannaapp.viewmodel.UserSort
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.font.FontWeight
 import cz.cannaclub.cannaapp.ui.components.DecorativePlants
 import cz.cannaclub.cannaapp.ui.components.UserPillComponent
 import cz.cannaclub.cannaapp.ui.theme.AdminBackground
@@ -61,8 +69,7 @@ import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 import cz.cannaclub.cannaapp.viewmodel.AdminViewModel
 import cz.cannaclub.cannaapp.viewmodel.OperationState
 
-private val PillHorizontalPadding = 28.dp
-private val PillVerticalPadding   = 72.dp
+private val PillHorizontalPadding = 12.dp
 
 @Composable
 fun AdminListScreen(
@@ -76,11 +83,14 @@ fun AdminListScreen(
     val scannedUser  by viewModel.scannedUser.collectAsState()
     val dotykacka    by viewModel.dotykackaState.collectAsState()
     val importState  by viewModel.importState.collectAsState()
+    val stats        by viewModel.stats.collectAsState()
+    val sortMode     by viewModel.sortMode.collectAsState()
 
     var selectedUser  by remember { mutableStateOf<User?>(null) }
     var openedByScan  by remember { mutableStateOf(false) }   // karta otevřená skenem → ukázat stav pokladny
     var showAddDialog by remember { mutableStateOf(false) }
     var showScanner   by remember { mutableStateOf(false) }
+    var confirmLogout by remember { mutableStateOf(false) }
     val snackbarState = remember { SnackbarHostState() }
 
     // ── Reakce na operace ─────────────────────────────────
@@ -107,6 +117,8 @@ fun AdminListScreen(
         }
     }
 
+    SystemBarsAppearance(lightBackground = false)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -117,39 +129,51 @@ fun AdminListScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = PillHorizontalPadding, vertical = PillVerticalPadding)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = PillHorizontalPadding, vertical = 10.dp)
                 .clip(RoundedCornerShape(32.dp))
                 .background(PillBackground)
         ) {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 22.dp)
+                modifier       = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 110.dp)
             ) {
 
                 // ── Hlavička ──────────────────────────────
                 item {
-                    Spacer(modifier = Modifier.height(36.dp))
                     Row(
-                        modifier              = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment     = Alignment.Bottom
+                        modifier          = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text  = "Zákazníci",
-                            style = MaterialTheme.typography.headlineLarge,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text     = "${users.size} účtů",
-                            style    = MaterialTheme.typography.labelSmall,
-                            color    = TextMuted,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            SectionLabel("Obsluha", color = Gold)
+                            Text(
+                                text  = "Zákazníci",
+                                style = MaterialTheme.typography.headlineLarge,
+                                color = TextPrimary
+                            )
+                        }
+                        Box(
+                            modifier         = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(CardDefault)
+                                .clickable { confirmLogout = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CannaIcon(id = R.drawable.ic_logout, tint = TextMuted, size = 20.dp)
+                        }
                     }
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Přehled
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatTile(R.drawable.ic_users, "${stats.customers}", "zákazníků", Modifier.weight(1f))
+                        StatTile(R.drawable.ic_tag, "${stats.pointsOpen}", "bodů = Kč", Modifier.weight(1f))
+                        StatTile(R.drawable.ic_trend, "+${stats.newThisWeek}", "za 7 dní", Modifier.weight(1f))
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
 
                 // ── Searchbar + Skener ────────────────────
@@ -165,11 +189,12 @@ fun AdminListScreen(
                             modifier      = Modifier.weight(1f),
                             placeholder   = {
                                 Text(
-                                    text  = "⌕  Hledat zákazníka…",
+                                    text  = "Jméno, e-mail, telefon, kód",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = TextFaint
                                 )
                             },
+                            leadingIcon   = { CannaIcon(id = R.drawable.ic_search, tint = TextMuted, size = 20.dp) },
                             textStyle  = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
                             singleLine = true,
                             shape      = RoundedCornerShape(14.dp),
@@ -193,10 +218,37 @@ fun AdminListScreen(
                                 .clickable { showScanner = true },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = "📷", fontSize = 24.sp)
+                            CannaIcon(id = R.drawable.ic_scan, tint = Gold, size = 26.dp)
                         }
                     }
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Řazení
+                    Row(
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        UserSort.entries.forEach { mode ->
+                            val active = mode == sortMode
+                            Text(
+                                text     = mode.label,
+                                style    = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color    = if (active) PillBackground else TextMuted,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(if (active) TextPrimary else CardDefault)
+                                    .clickable { viewModel.setSort(mode) }
+                                    .padding(horizontal = 14.dp, vertical = 7.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(
+                            text  = "${users.size}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextFaint
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
 
                 // ── Seznam zákazníků ──────────────────────
@@ -244,12 +296,12 @@ fun AdminListScreen(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text  = "Naše zeleň 🌿",
+                                text  = "Naše zeleň",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = TextPrimary
                             )
                         }
-                        Text("→", fontSize = 20.sp, color = TextMuted)
+                        CannaIcon(id = R.drawable.ic_chevron_right, tint = TextMuted, size = 20.dp)
                     }
 
                     // ── Import zákazníků z Dotykačky ──────────
@@ -277,13 +329,9 @@ fun AdminListScreen(
                                 color = TextPrimary
                             )
                         }
-                        Text("→", fontSize = 20.sp, color = TextMuted)
+                        CannaIcon(id = R.drawable.ic_chevron_right, tint = TextMuted, size = 20.dp)
                     }
-                    Spacer(
-                        modifier = Modifier
-                            .height(100.dp)
-                            .navigationBarsPadding()
-                    )
+
                 }
             }
         }
@@ -296,16 +344,20 @@ fun AdminListScreen(
             contentColor   = AdminBackground,
             modifier       = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 56.dp)
-                .size(54.dp)
+                .navigationBarsPadding()
+                .padding(end = 30.dp, bottom = 30.dp)
+                .size(58.dp)
         ) {
-            Text(text = "+", fontSize = 28.sp, color = Background)
+            CannaIcon(id = R.drawable.ic_plus, tint = Background, size = 26.dp)
         }
 
         // ── Snackbar ──────────────────────────────────────
         SnackbarHost(
             hostState = snackbarState,
-            modifier  = Modifier.align(Alignment.BottomCenter)
+            modifier  = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 20.dp)
         ) { data ->
             Snackbar(
                 snackbarData   = data,
@@ -315,6 +367,20 @@ fun AdminListScreen(
                 modifier       = Modifier.padding(horizontal = PillHorizontalPadding + 4.dp)
             )
         }
+    }
+
+    if (confirmLogout) {
+        AlertDialog(
+            onDismissRequest = { confirmLogout = false },
+            containerColor   = PillBackground,
+            title            = { Text("Odhlásit obsluhu?", style = MaterialTheme.typography.headlineSmall, color = TextPrimary) },
+            confirmButton    = {
+                TextButton(onClick = { confirmLogout = false; onLogout() }) { Text("Odhlásit", color = PointsRed) }
+            },
+            dismissButton    = {
+                TextButton(onClick = { confirmLogout = false }) { Text("Zrušit", color = TextMuted) }
+            }
+        )
     }
 
     // ── QR Skener ─────────────────────────────────────────
@@ -430,4 +496,29 @@ private fun ImportCustomersDialog(
             }
         }
     )
+}
+
+@Composable
+private fun StatTile(icon: Int, value: String, label: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(CardDefault)
+            .padding(horizontal = 12.dp, vertical = 12.dp)
+    ) {
+        CannaIcon(id = icon, tint = Gold, size = 18.dp)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text     = value,
+            style    = MaterialTheme.typography.titleLarge,
+            color    = TextPrimary,
+            maxLines = 1
+        )
+        Text(
+            text     = label,
+            style    = MaterialTheme.typography.bodySmall,
+            color    = TextMuted,
+            maxLines = 1
+        )
+    }
 }

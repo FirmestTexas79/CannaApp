@@ -161,7 +161,7 @@ fun AddEditProductDialog(
                                     contentScale = ContentScale.Crop
                                 )
                             } else {
-                                Text("🌿", fontSize = 30.sp)
+                                CannaIcon(id = cz.cannaclub.cannaapp.R.drawable.ic_leaf, tint = Sage.copy(alpha = 0.5f), size = 32.dp)
                             }
                         }
                     }
@@ -179,7 +179,7 @@ fun AddEditProductDialog(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "📷  Vybrat z galerie",
+                        text = "Vybrat z galerie",
                         style = MaterialTheme.typography.labelSmall,
                         color = Gold,
                         modifier = Modifier
@@ -364,4 +364,4 @@ private fun ProductField(
             )
         )
     }
-}
+}

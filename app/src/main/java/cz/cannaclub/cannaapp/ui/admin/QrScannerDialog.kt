@@ -192,7 +192,7 @@ fun QrScannerDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "📷", fontSize = 48.sp)
+                        cz.cannaclub.cannaapp.ui.components.CannaIcon(id = cz.cannaclub.cannaapp.R.drawable.ic_scan, tint = Color.White, size = 48.dp)
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
                             text  = "Povolte přístup ke kameře",
