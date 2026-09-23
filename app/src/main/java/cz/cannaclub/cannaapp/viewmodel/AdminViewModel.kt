@@ -46,7 +46,8 @@ class AdminViewModel(
                 else users.filter { user ->
                     user.name.contains(query, ignoreCase = true) ||
                             user.email.contains(query, ignoreCase = true) ||
-                            user.phone.contains(query, ignoreCase = true)
+                            user.phone.contains(query, ignoreCase = true) ||
+                            user.memberCode.contains(query)
                 }
             }.collect { filtered ->
                 _filteredUsers.value = filtered
@@ -94,7 +95,7 @@ class AdminViewModel(
     // ─────────────────────────────────────────────────────
     fun findUserByQrCode(userId: String) {
         viewModelScope.launch {
-            val user = repository.getUserById(userId.trim())
+            val user = repository.getUserByScanCode(userId)
             if (user == null) {
                 _operationState.value = OperationState.Error("Zákazník nenalezen")
                 return@launch
@@ -205,4 +206,4 @@ sealed class DotykackaState {
     object Syncing  : DotykackaState()
     data class Assigned(val message: String) : DotykackaState()  // zákazník připojen k účtu
     data class Error(val message: String) : DotykackaState()
-}
+}

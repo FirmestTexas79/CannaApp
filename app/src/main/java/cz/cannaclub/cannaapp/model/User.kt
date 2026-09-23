@@ -1,6 +1,7 @@
 package cz.cannaclub.cannaapp.model
 
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.Exclude
 
 data class User(
     val id: String = "",
@@ -10,10 +11,16 @@ data class User(
     val points: Int = 0,
     val totalPoints: Int = 0,
     val dotykackaId: String = "",
-    val fcmToken: String = "",      // ← přidej toto
+    val fcmToken: String = "",
+    val memberCode: String = "",    // číselný členský kód = "Čárový kód" zákazníka v Dotykačce
     val createdAt: Timestamp = Timestamp.now()
 ) {
-    constructor() : this("", "", "", "", 0, 0, "", "", Timestamp.now())
+    constructor() : this("", "", "", "", 0, 0, "", "", "", Timestamp.now())
+
+    /** Kód, který appka ukazuje k naskenování. Než server přidělí členský kód, použije se ID. */
+    @get:Exclude
+    val scanCode: String
+        get() = memberCode.ifBlank { id }
     val initials: String
         get() = name
             .split(" ")
@@ -42,4 +49,4 @@ enum class MemberRank(
     STRIBRNY("Stříbrný",  "🥈", 500),
     ZLATY   ("Zlatý",     "🥇", 1000),
     RODINA  ("Rodina",    "💚", 2500)
-}
+}

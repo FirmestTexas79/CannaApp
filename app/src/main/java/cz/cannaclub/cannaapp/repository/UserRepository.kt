@@ -81,6 +81,18 @@ class UserRepository {
         awaitClose { listener.remove() }
     }
 
+    /** Najde zákazníka podle naskenovaného kódu — členského kódu nebo (starší QR) ID dokumentu. */
+    suspend fun getUserByScanCode(code: String): User? {
+        val trimmed = code.trim()
+        if (trimmed.isEmpty()) return null
+        return try {
+            val byCode = usersCol.whereEqualTo("memberCode", trimmed).limit(1).get().await()
+            byCode.documents.firstOrNull()?.let { doc ->
+                doc.toObject(User::class.java)?.copy(id = doc.id)
+            } ?: if (trimmed.contains('/')) null else getUserById(trimmed)
+        } catch (e: Exception) { null }
+    }
+
     suspend fun getUserById(userId: String): User? {
         return try {
             val doc = usersCol.document(userId).get().await()

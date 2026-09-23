@@ -2,12 +2,15 @@
 
 ## Jak to funguje
 
-1. Zákazník si v obchodě vybere zboží, obsluha ho namarkuje do Dotykačky (vznikne otevřený účet).
-2. Obsluha v admin appce naskenuje QR kód zákazníka.
-3. Server (Cloud Function `assignCustomerToOrder`) najde zákazníka v Dotykačce podle e-mailu, nebo ho založí, a připojí ho k **nejnověji založenému otevřenému účtu bez zákazníka** na pokladně. V kartě zákazníka v appce se ukáže „✓ Připojeno k účtu na pokladně (450 Kč)“.
-4. Obsluha účet normálně zaplatí v Dotykačce.
-5. Každých 5 minut server (`syncDotykackaOrders`) projde zaplacené účty se zákazníkem a připíše body (výchozí 1 bod za 10 Kč, nastavuje se v `functions/.env`). Každý účet se započítá jen jednou.
-6. Při každé změně bodů (nákup i ruční úprava) dostane zákazník push notifikaci (`notifyOnTransaction`).
+1. Každý zákazník v appce má **členský kód** (12 číslic, začíná `29`). Appka ho ukazuje jako QR i jako klasický čárový kód. Klepnutím se zvětší na celou obrazovku s jasem na maximum.
+2. Server tenhle kód zapíše zákazníkovi v Dotykačce do pole **Čárový kód** (najde ho podle e-mailu, případně ho založí). Pokud už tam zákazník čárový kód má, třeba z plastové karty, převezme ho naopak appka, takže stará karta funguje dál.
+3. Prodavač namarkuje zboží a **naskenuje telefon zákazníka čtečkou na pokladně**. Dotykačka podle čárového kódu sama načte zákazníka na účet.
+4. Účet se normálně zaplatí.
+5. Každých 5 minut server (`syncDotykackaOrders`) projde zaplacené účty se zákazníkem a připíše body (výchozí 1 bod za 10 Kč, nastavuje se v `functions/.env`). Každý účet se započítá jen jednou. Zákazníkovi přijde notifikace.
+
+**Záloha:** když čtečka telefon nepřečte, prodavač kód naskenuje kamerou v admin appce (📷). Zákazník se pak připojí k nejnovějšímu otevřenému účtu na pokladně (`assignCustomerToOrder`). Kód se dá do vyhledávání v adminu i napsat.
+
+**Čtečka:** telefonní displej přečte jen **2D čtečka (imager)**. Klasické laserové čtečky čárových kódů z displeje většinou nečtou. Zkus to hned při první návštěvě.
 
 Appka s Dotykačkou **nekomunikuje přímo**. Refresh token nikdy nevyprší a dává plný přístup k pokladně (tržby, zákazníci, zakládání a placení účtů). Kdyby byl v APK, dostal by ho každý, kdo si appku stáhne a rozbalí. Proto je uložený jen na serveru ve Firebase Secret Manageru.
 
@@ -35,7 +38,10 @@ V `functions/.env` už jsou vyplněné hodnoty, které byly dřív v kódu (`304
 - [ ] Domluv se s majitelem: bude potřeba **jeho přihlášení do Dotykačky** (e-mail + heslo k admin.dotykacka.cz), cca 5 minut.
 - [ ] Pokladna musí mít **Dotypos 2.17 nebo novější** (Nastavení → O aplikaci).
 
-## Krok 2: Refresh Token (u majitele, na počítači)
+## Krok 2: Refresh Token (na tvém notebooku s projektem, majitel jen zadá heslo)
+
+Všechno se dělá na **tvém notebooku**, kde je projekt a Firebase CLI. Majitel do otevřeného okna Dotykačky jen napíše svůj e-mail a heslo a potvrdí přístup. Na pokladně ani na jeho počítači se nic neinstaluje. Pokladna musí být jen zapnutá a online, kvůli testu v kroku 3.
+
 
 1. Otevři v prohlížeči soubor `tools/dotykacka-connector.html` (dvojklik). Funguje offline, nic se nikam neodesílá kromě Dotykačky.
 2. Vyplň **Client ID** (`cannaapp`) a **Client Secret** a klikni na **Přihlásit se do Dotykačky**.
@@ -89,14 +95,17 @@ firebase deploy --only functions
 - CLI se zeptá, jestli smazat staré funkce, které v kódu už nejsou (`onOrderCompleted` a případně stará funkce na `notifications_queue`). **Odpověz ano.** Nové funkce je nahrazují, a kdyby zůstaly obě, notifikace by chodily dvakrát.
 - Při prvním deployi scheduleru se může objevit výzva k povolení Cloud Scheduler API. Potvrď ji.
 
-Zkontroluj ve Firebase konzoli → Functions, že tam jsou 4 funkce: `assignCustomerToOrder`, `dotykackaStatus`, `syncDotykackaOrders`, `notifyOnTransaction`.
+Zkontroluj ve Firebase konzoli → Functions, že tam je 5 funkcí: `assignCustomerToOrder`, `dotykackaStatus`, `syncDotykackaOrders`, `onUserCreated`, `notifyOnTransaction`.
+
+Při prvním běhu (do 5 minut po deployi) server projde **všechny stávající zákazníky**, přidělí jim členské kódy a zapíše je do Dotykačky. Ve Firestore u každého zákazníka pak uvidíš `memberCode` a `dotykackaSynced: true`. Když se to u někoho nepovede, najdeš u něj `dotykackaSyncError` s důvodem a server to každých 5 minut zkusí znovu.
 
 ## Krok 6: Zkouška naostro
 
-1. Na pokladně otevři směnu a namarkuj cokoliv (třeba za 10 Kč).
-2. V admin appce naskenuj QR testovacího zákazníka. Karta by měla ukázat **„✓ Připojeno k účtu na pokladně (10 Kč)“** a na pokladně se u účtu objeví zákazník.
-3. Zaplať účet.
-4. Do 5 minut přibudou zákazníkovi body a přijde mu notifikace.
+1. Počkej 5 minut po deployi a zkontroluj v Dotykačce (admin.dotykacka.cz → Zákazníci), že testovací zákazník má vyplněný **Čárový kód** stejný jako v appce.
+2. Na pokladně otevři směnu a namarkuj cokoliv, třeba za 10 Kč.
+3. Na telefonu zákazníka klepni na členský kód (zvětší se) a **naskenuj ho čtečkou pokladny**. Na účtu se musí objevit jméno zákazníka.
+4. Zaplať účet.
+5. Do 5 minut zákazník dostane body a notifikaci.
 
 První běh `syncDotykackaOrders` jen zapíše startovní čas (`integration/dotykacka` ve Firestore) a zpětně nic nepočítá. Body se připisují za nákupy **od nasazení dál**.
 
@@ -106,10 +115,10 @@ Když něco nejde: Firebase konzole → Functions → Logs (nebo `firebase funct
 
 ## Chování, o kterém obsluha musí vědět
 
-- **Nejdřív markovat, pak skenovat.** Bez otevřeného účtu napíše appka „Na pokladně není otevřený účet“.
-- Když je otevřených účtů bez zákazníka víc, připojí se k **nejnověji založenému** a appka upozorní „otevřených je N, zkontroluj pokladnu“.
-- Nový zákazník založený v Dotykačce přes API se do pokladny dostane se zpožděním (desítky sekund). Když appka napíše „Zákazník ještě není v pokladně“, stačí za chvíli ťuknout na **Znovu**.
-- Zaplacený účet už zákazníka nepřijme (Dotykačka to neumožňuje). Skenovat se musí před zaplacením.
+- Zákazníka **naskenuj před zaplacením**. Zaplacený účet už zákazníka nepřijme (Dotykačka to neumožňuje).
+- Když čtečka telefon nepřečte: ať zákazník klepne na kód (zvětší se a zjasní). Když to pořád nejde, naskenuj ho v admin appce.
+- Nový zákazník se do pokladny propisuje desítky sekund. Když ho čtečka hned po registraci nenajde, chvíli počkej.
+- Body se počítají jen za nákupy **od nasazení dál**, zpětně ne.
 
 ## Soubory
 

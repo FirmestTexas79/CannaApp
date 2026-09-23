@@ -90,4 +90,5 @@ dependencies {
 
     implementation(libs.firebase.messaging.ktx)
     implementation(libs.firebase.functions.ktx)
+    implementation(libs.zxing.core)   // QR + čárový kód členské karty
 }

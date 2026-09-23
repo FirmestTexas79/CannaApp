@@ -124,6 +124,13 @@ fun EditPointsDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted
                     )
+                    if (user.memberCode.isNotBlank()) {
+                        Text(
+                            text  = "Kód: ${user.memberCode}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
+                        )
+                    }
                 }
             }
 

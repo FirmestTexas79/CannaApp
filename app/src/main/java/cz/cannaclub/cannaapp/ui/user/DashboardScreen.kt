@@ -174,8 +174,8 @@ fun DashboardScreen(
                 }
 
                 item {
-                    user?.id?.let { userId ->
-                        QrCodeCard(userId = userId)
+                    user?.let { u ->
+                        QrCodeCard(code = u.scanCode, ready = u.memberCode.isNotBlank())
                     }
                     Spacer(modifier = Modifier.height(20.dp))
                 }
@@ -323,4 +323,4 @@ private fun formatTimestamp(timestamp: com.google.firebase.Timestamp): String {
     } else {
         dateFmt.format(timestamp.toDate())
     }
-}
+}

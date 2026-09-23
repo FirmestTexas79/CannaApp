@@ -6,8 +6,10 @@
  * vytváření a placení účtů), takže nesmí být v APK, které si stáhne každý zákazník.
  *
  * Funkce:
- *  - assignCustomerToOrder  (callable)  → obsluha naskenuje QR, zákazník se připojí k otevřenému účtu
- *  - syncDotykackaOrders    (každých 5 min) → zaplacené účty se zákazníkem = přičtení bodů
+ *  - assignCustomerToOrder  (callable)  → záloha: obsluha naskenuje kód v admin appce a zákazník se připojí k účtu
+ *    (hlavní cesta: prodavač naskenuje kód čtečkou přímo na pokladně, Dotykačka zákazníka načte sama)
+ *  - syncDotykackaOrders    (každých 5 min) → dosynchronizuje zákazníky + zaplacené účty se zákazníkem = body
+ *  - onUserCreated          (Firestore trigger) → nový zákazník dostane členský kód a účet v Dotykačce
  *  - notifyOnTransaction    (Firestore trigger) → push notifikace při každé změně bodů
  *  - dotykackaStatus        (callable)  → diagnostika spojení z admin appky / při nastavování
  *
@@ -20,6 +22,7 @@ const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret, defineString, defineInt } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
+const { randomInt } = require("node:crypto");
 // firebase-admin 13+ má jen modulární API (admin.firestore() už neexistuje)
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
@@ -74,7 +77,8 @@ async function getAccessToken(force = false) {
 }
 
 /** Volání REST API v rámci cloudu. Při 401 jednou obnoví token a zkusí znovu. */
-async function api(path, { method = "GET", body, allow404 = false } = {}, retried = false) {
+async function api(path, opts = {}, retried = false) {
+  const { method = "GET", body, allow404 = false, headers = {}, withEtag = false } = opts;
   const token = await getAccessToken(retried);
   const res = await fetch(`${API}/clouds/${CLOUD_ID.value().trim()}${path}`, {
     method,
@@ -82,19 +86,21 @@ async function api(path, { method = "GET", body, allow404 = false } = {}, retrie
       "Authorization": `Bearer ${token}`,
       "Content-Type": "application/json",
       "Accept": "application/json",
+      ...headers,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   if (res.status === 401 && !retried) {
-    return api(path, { method, body, allow404 }, true);
+    return api(path, opts, true);
   }
   // Dotykačka vrací u prázdného seznamu 404
   if (res.status === 404 && allow404) return null;
 
   const text = await res.text();
   if (!res.ok) throw new DotyError(res.status, text, path);
-  return text ? JSON.parse(text) : null;
+  const json = text ? JSON.parse(text) : null;
+  return withEtag ? { json, etag: res.headers.get("etag") } : json;
 }
 
 /** Seznamy jsou stránkované: { data: [...] }. Prázdný seznam = 404. */
@@ -164,7 +170,7 @@ async function findCustomerByExternalId(userId) {
   return listData(json).find((c) => !c.deleted) || null;
 }
 
-async function createCustomer(user) {
+async function createCustomer(user, barcode) {
   const parts = String(user.name || "").trim().split(/\s+/).filter(Boolean);
   const firstName = parts[0] || "Zákazník";
   const lastName = parts.length > 1 ? parts.slice(1).join(" ") : "CannaClub";
@@ -178,7 +184,7 @@ async function createCustomer(user) {
     phone: String(user.phone || "").replace(/\s+/g, "").slice(0, 20),
     externalId: user.id,
     addressLine1: "",
-    barcode: "",
+    barcode: barcode || "",
     companyId: "",
     vatId: "",
     zip: "",
@@ -198,18 +204,97 @@ async function createCustomer(user) {
   return created;
 }
 
-/** Najde (nebo založí) zákazníka v Dotykačce a uloží jeho ID k uživateli ve Firestore. */
-async function ensureCustomer(user) {
-  if (user.dotykackaId) return String(user.dotykackaId);
+// ── Členský kód (čárový kód pro pokladnu) ─────────────────────────────
+// Číselný, aby ho přečetl každý skener bez ohledu na rozložení klávesnice.
+// Prefix 29 = interní rozsah, nekoliduje s EAN kódy zboží.
+async function generateMemberCode() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = "29" + String(randomInt(0, 10_000_000_000)).padStart(10, "0");
+    const taken = await db.collection("users").where("memberCode", "==", code).limit(1).get();
+    if (taken.empty) return code;
+  }
+  throw new Error("Nepodařilo se vygenerovat unikátní členský kód");
+}
 
-  const found =
+async function codeTakenByOther(code, userId) {
+  const snap = await db.collection("users").where("memberCode", "==", code).limit(2).get();
+  return snap.docs.some((d) => d.id !== userId);
+}
+
+/** Zapíše zákazníkovi v Dotykačce čárový kód (PATCH vyžaduje ETag). */
+async function setCustomerBarcode(customerId, barcode) {
+  const { json: current, etag } = await api(`/customers/${customerId}`, { withEtag: true });
+  if (!etag) throw new Error("Dotykačka nevrátila ETag zákazníka");
+  await api(`/customers/${customerId}`, {
+    method: "PATCH",
+    headers: { "If-Match": etag },
+    body: { id: Number(customerId), _cloudId: Number(CLOUD_ID.value().trim()), barcode },
+  });
+  logger.info("Nastaven čárový kód zákazníka", { customerId, barcode, previous: current && current.barcode });
+}
+
+async function getCustomerById(id) {
+  const c = await api(`/customers/${id}`, { allow404: true });
+  return c && !c.deleted ? c : null;
+}
+
+/**
+ * Propojí uživatele appky se zákazníkem v Dotykačce:
+ *  - najde ho (dotykackaId → externalId → e-mail), jinak založí,
+ *  - zajistí, že má v Dotykačce jako "Čárový kód" členský kód z appky.
+ *    Pokud už tam čárový kód má (plastová karta), převezme ho appka,
+ *    aby stará karta fungovala dál.
+ * Vrací ID zákazníka v Dotykačce.
+ */
+async function syncUser(userId) {
+  const ref = db.collection("users").doc(userId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error(`Uživatel ${userId} neexistuje`);
+  const user = { id: snap.id, ...snap.data() };
+
+  let customer =
+    (user.dotykackaId && (await getCustomerById(user.dotykackaId))) ||
     (await findCustomerByExternalId(user.id)) ||
-    (await findCustomerByEmail(user.email)) ||
-    (await createCustomer(user));
+    (await findCustomerByEmail(user.email));
 
-  const dotykackaId = String(found.id);
-  await db.collection("users").doc(user.id).update({ dotykackaId });
-  return dotykackaId;
+  let code = String(user.memberCode || "").trim();
+
+  if (customer) {
+    const existing = String(customer.barcode || "").trim();
+    if (existing && existing !== code) {
+      if (await codeTakenByOther(existing, user.id)) {
+        throw new Error(`Čárový kód ${existing} zákazníka ${customer.id} už má v appce jiný uživatel`);
+      }
+      code = existing; // převzít kód z karty
+    } else if (!existing) {
+      if (!code) code = await generateMemberCode();
+      await setCustomerBarcode(customer.id, code);
+    }
+  } else {
+    if (!code) code = await generateMemberCode();
+    customer = await createCustomer(user, code);
+  }
+
+  await ref.update({
+    dotykackaId: String(customer.id),
+    memberCode: code,
+    dotykackaSynced: true,
+    dotykackaSyncError: FieldValue.delete(),
+  });
+  return String(customer.id);
+}
+
+async function syncUserSafe(userId) {
+  try {
+    await syncUser(userId);
+    return true;
+  } catch (e) {
+    logger.error("Synchronizace zákazníka s Dotykačkou selhala", { userId, error: e.message });
+    await db.collection("users").doc(userId)
+      .update({ dotykackaSynced: false, dotykackaSyncError: String(e.message).slice(0, 300) })
+      .catch(() => {});
+    return false;
+  }
 }
 
 // ── Přiřazení k otevřenému účtu ──────────────────────────────────────
@@ -287,10 +372,9 @@ exports.assignCustomerToOrder = onCall({ secrets: [REFRESH_TOKEN] }, async (requ
 
   const snap = await db.collection("users").doc(userId).get();
   if (!snap.exists) throw new HttpsError("not-found", "Zákazník nenalezen.");
-  const user = { id: snap.id, ...snap.data() };
 
   try {
-    const dotykackaId = await ensureCustomer(user);
+    const dotykackaId = await syncUser(userId);
     const result = await assignToOpenOrder(dotykackaId);
     logger.info("Zákazník připojen k účtu", { userId, dotykackaId, ...result });
     return { dotykackaId, ...result };
@@ -323,7 +407,7 @@ exports.dotykackaStatus = onCall({ secrets: [REFRESH_TOKEN] }, async (request) =
 //    Každý účet se započítá jen jednou (kolekce dotykacka_orders).
 // ════════════════════════════════════════════════════════════════════
 exports.syncDotykackaOrders = onSchedule(
-  { schedule: "every 5 minutes", timeZone: "Europe/Prague", secrets: [REFRESH_TOKEN] },
+  { schedule: "every 5 minutes", timeZone: "Europe/Prague", secrets: [REFRESH_TOKEN], timeoutSeconds: 300 },
   async () => {
     const stateRef = db.doc("integration/dotykacka");
     const state = await stateRef.get();
@@ -336,6 +420,8 @@ exports.syncDotykackaOrders = onSchedule(
       return;
     }
     const since = startedAt.toMillis();
+
+    await syncPendingCustomers(stateRef, state.get("customersBackfilled") === true);
 
     const filter = encodeURIComponent(
       `_branchId|eq|${BRANCH_ID.value().trim()};_customerId|eq|notnull;paid|eq|true`
@@ -362,6 +448,31 @@ exports.syncDotykackaOrders = onSchedule(
     if (awarded) logger.info(`Připsány body za ${awarded} účtů.`);
   }
 );
+
+/**
+ * Zákazníci, kteří ještě nemají v Dotykačce členský kód.
+ * Poprvé projde všechny existující uživatele, pak jen ty s dotykackaSynced == false.
+ */
+async function syncPendingCustomers(stateRef, backfilled) {
+  const LIMIT = 100;
+  let ids;
+  if (!backfilled) {
+    const all = await db.collection("users").get();
+    ids = all.docs.filter((d) => d.get("dotykackaSynced") !== true).map((d) => d.id);
+  } else {
+    const pending = await db.collection("users").where("dotykackaSynced", "==", false).limit(LIMIT).get();
+    ids = pending.docs.map((d) => d.id);
+  }
+
+  let ok = 0;
+  for (const id of ids.slice(0, LIMIT)) {
+    if (await syncUserSafe(id)) ok++;
+  }
+  if (!backfilled && ids.length <= LIMIT) {
+    await stateRef.set({ customersBackfilled: true }, { merge: true });
+  }
+  if (ids.length) logger.info(`Zákazníci s Dotykačkou: ${ok}/${Math.min(ids.length, LIMIT)} synchronizováno.`);
+}
 
 async function awardOrder(order, total) {
   const orderRef = db.collection("dotykacka_orders").doc(String(order.id));
@@ -407,7 +518,23 @@ async function awardOrder(order, total) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 4) Push notifikace při každém pohybu bodů
+// 4) Nový zákazník v appce → hned členský kód + zákazník v Dotykačce
+// ════════════════════════════════════════════════════════════════════
+exports.onUserCreated = onDocumentCreated(
+  { document: "users/{userId}", secrets: [REFRESH_TOKEN] },
+  async (event) => {
+    const userId = event.params.userId;
+    const ref = db.collection("users").doc(userId);
+    // Kód dostane hned, i kdyby Dotykačka zrovna nešla (dosynchronizuje scheduler)
+    if (!event.data.get("memberCode")) {
+      await ref.update({ memberCode: await generateMemberCode(), dotykackaSynced: false });
+    }
+    await syncUserSafe(userId);
+  }
+);
+
+// ════════════════════════════════════════════════════════════════════
+// 5) Push notifikace při každém pohybu bodů
 //    (nákup přes Dotykačku i ruční úprava obsluhou)
 // ════════════════════════════════════════════════════════════════════
 exports.notifyOnTransaction = onDocumentCreated("users/{userId}/transactions/{txId}", async (event) => {
