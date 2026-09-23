@@ -19,7 +19,7 @@ import java.util.Date
  *
  *   adb shell am start -n cz.cannaclub.cannaapp/.DesignPreviewActivity --es screen rewards
  *
- * screen = dashboard | empty | rewards | profile | card | celebrate | onboarding | admin | login | register  | splash | products
+ * screen = dashboard | empty | rewards | profile | card | celebrate | onboarding | admin | login | register  | splash | products | promo | adminloyalty
  */
 class DesignPreviewActivity : ComponentActivity() {
 
@@ -43,7 +43,8 @@ class DesignPreviewActivity : ComponentActivity() {
         val now = System.currentTimeMillis()
         fun ago(h: Long) = Timestamp(Date(now - h * 3_600_000))
         val tx = listOf(
-            Transaction("1", TransactionType.ADD,      64, "Nákup 640 Kč",          ago(0)),
+            Transaction("1", TransactionType.ADD,     147, "Nákup 640 Kč",          ago(0),
+                basePoints = 64, promoBonus = 64, promoLabel = "Dvojité body", rankBonus = 19, rankLabel = "Stříbrný"),
             Transaction("2", TransactionType.SUBTRACT, 40, "Odměna: 3× preroll",    ago(1)),
             Transaction("3", TransactionType.ADD,      38, "Nákup 385 Kč",          ago(26)),
             Transaction("4", TransactionType.ADD,      20, "Bonus za registraci",   ago(24 * 5)),
@@ -57,6 +58,16 @@ class DesignPreviewActivity : ComponentActivity() {
                     if (screen == "login") cz.cannaclub.cannaapp.ui.user.LoginScreen(
                         viewModel = vm, onLoginSuccess = {}, onAdminClick = {}, onRegisterClick = {}
                     ) else cz.cannaclub.cannaapp.ui.user.RegisterScreen(viewModel = vm, onRegistered = {}, onBack = {})
+                }
+            }
+            return
+        }
+        if (screen == "adminloyalty") {
+            setContent {
+                CannaAppTheme {
+                    cz.cannaclub.cannaapp.ui.admin.AdminLoyaltyScreen(
+                        viewModel = androidx.lifecycle.viewmodel.compose.viewModel(), onBack = {}
+                    )
                 }
             }
             return
@@ -108,6 +119,9 @@ class DesignPreviewActivity : ComponentActivity() {
                     onOpenOnboarding     = {},
                     onLogout             = {},
                     onProductsClick      = {},
+                    loyalty              = if (screen == "promo") cz.cannaclub.cannaapp.model.LoyaltyConfig(
+                        promo = cz.cannaclub.cannaapp.model.Promo(2, "Dvojité body", 0L, now + 5 * 3_600_000L)
+                    ) else cz.cannaclub.cannaapp.model.LoyaltyConfig(),
                     initialOverlay       = when (screen) {
                         "rewards" -> DashboardOverlay.REWARDS
                         "profile" -> DashboardOverlay.PROFILE

@@ -184,7 +184,7 @@ private val introPages = listOf(
     IntroPage(
         R.drawable.ic_gift,
         "Body jsou peníze",
-        "1 bod = 1 Kč. Vyměň je za slevu na cokoli, nebo za odměnu. Čím víc nasbíráš, tím vyšší rank."
+        "1 bod = 1 Kč. Vyměň je za slevu na cokoli, nebo za odměnu. Čím víc nasbíráš, tím vyšší rank a víc bodů za každý nákup."
     )
 )
 

@@ -34,6 +34,15 @@ object ShortcutRequests {
     fun consume() { _showCard.value = false }
 }
 
+/** Výsledek uložení kartičky do Google Peněženky (přichází přes onActivityResult). */
+object WalletEvents {
+    private val _saved = MutableStateFlow(false)
+    val saved: StateFlow<Boolean> = _saved.asStateFlow()
+
+    fun onSaved() { _saved.value = true }
+    fun consume() { _saved.value = false }
+}
+
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,6 +64,17 @@ class MainActivity : ComponentActivity() {
                     CannaNavGraph()
                 }
             }
+        }
+    }
+
+    @Deprecated("Google Pay API vrací výsledek uložení jen přes onActivityResult")
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == cz.cannaclub.cannaapp.repository.WalletRepository.SAVE_REQUEST_CODE &&
+            resultCode == RESULT_OK
+        ) {
+            WalletEvents.onSaved()
         }
     }
 

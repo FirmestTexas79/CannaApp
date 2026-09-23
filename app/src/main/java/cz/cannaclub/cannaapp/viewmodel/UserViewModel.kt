@@ -9,6 +9,7 @@ import cz.cannaclub.cannaapp.model.User
 import cz.cannaclub.cannaapp.preferences.UserPreferences
 import cz.cannaclub.cannaapp.repository.RegisterResult
 import cz.cannaclub.cannaapp.repository.UserRepository
+import cz.cannaclub.cannaapp.repository.WalletRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,16 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = UserRepository()
     private val userPrefs  = UserPreferences(application)
+    private val walletRepo = WalletRepository()
+    private val loyaltyRepo = cz.cannaclub.cannaapp.repository.LoyaltyRepository()
+
+    /** Bonusy za rank a běžící akce (config/loyalty). */
+    private val _loyalty = MutableStateFlow(cz.cannaclub.cannaapp.model.LoyaltyConfig())
+    val loyalty: StateFlow<cz.cannaclub.cannaapp.model.LoyaltyConfig> = _loyalty.asStateFlow()
+
+    init {
+        viewModelScope.launch { loyaltyRepo.configFlow().collect { _loyalty.value = it } }
+    }
 
     private val _currentUser = MutableStateFlow<User?>(null)
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
@@ -37,6 +48,13 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
     /** Úvodní "Jak to funguje" (poprvé po přihlášení, nebo z profilu). */
     private val _showOnboarding = MutableStateFlow(false)
     val showOnboarding: StateFlow<Boolean> = _showOnboarding.asStateFlow()
+
+    // ── Google Peněženka ─────────────────────────────────
+    private val _walletSaved = MutableStateFlow(false)
+    val walletSaved: StateFlow<Boolean> = _walletSaved.asStateFlow()
+
+    private val _walletBusy = MutableStateFlow(false)
+    val walletBusy: StateFlow<Boolean> = _walletBusy.asStateFlow()
 
     // Živé Firestore listenery — rušíme je při odhlášení / novém přihlášení
     private var userJob: Job? = null
@@ -120,6 +138,7 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun observeUser(userId: String) {
+        _walletSaved.value = userPrefs.isWalletSaved(userId)
         userJob?.cancel()
         userJob = viewModelScope.launch {
             repository.getUserFlow(userId).collect { user ->
@@ -148,6 +167,42 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
     fun celebrationShown() {
         _celebration.value = null
         _currentUser.value?.let { userPrefs.setSeenPoints(it.id, it.points) }
+    }
+
+    /** Přidat členskou kartičku do Google Peněženky. */
+    fun addToWallet(activity: android.app.Activity) {
+        val user = _currentUser.value ?: return
+        if (_walletBusy.value) return
+        if (user.memberCode.isBlank()) {
+            toast("Kartička se ještě připravuje, zkus to za pár minut")
+            return
+        }
+        viewModelScope.launch {
+            _walletBusy.value = true
+            walletRepo.createPass(user.id, user.memberCode).fold(
+                onSuccess = { pass ->
+                    try {
+                        WalletRepository.launchSave(activity, pass)
+                    } catch (e: Exception) {
+                        android.util.Log.e("Wallet", "Uložení do Peněženky selhalo", e)
+                        toast("Peněženku se nepodařilo otevřít")
+                    }
+                },
+                onFailure = { toast(it.message ?: "Kartičku se nepodařilo připravit") }
+            )
+            _walletBusy.value = false
+        }
+    }
+
+    /** Peněženka potvrdila uložení. */
+    fun onWalletSaved() {
+        _currentUser.value?.let { userPrefs.setWalletSaved(it.id) }
+        _walletSaved.value = true
+        toast("Kartička je v Peněžence Google")
+    }
+
+    private fun toast(msg: String) {
+        android.widget.Toast.makeText(getApplication(), msg, android.widget.Toast.LENGTH_LONG).show()
     }
 
     private fun maybeShowOnboarding() {

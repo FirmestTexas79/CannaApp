@@ -91,4 +91,7 @@ dependencies {
     implementation(libs.firebase.messaging.ktx)
     implementation(libs.firebase.functions.ktx)
     implementation(libs.zxing.core)   // QR + čárový kód členské karty
+
+    // Google Peněženka: uložení kartičky (tlačítko = oficiální česká grafika v res/drawable)
+    implementation("com.google.android.gms:play-services-pay:16.5.0")
 }

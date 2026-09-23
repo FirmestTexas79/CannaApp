@@ -130,6 +130,59 @@ V admin appce dole klikni na **Převzít zákazníky z pokladny**. Appka nejdř�
 - Nový zákazník se do pokladny propisuje desítky sekund. Když ho čtečka hned po registraci nenajde, chvíli počkej.
 - Body se počítají jen za nákupy **od nasazení dál**, zpětně ne.
 
+---
+
+## Akce, bonusy za rank a zprávy zákazníkům
+
+**Bonus za rank** běží automaticky: podle ranku zákazníka dostane za každý nákup víc bodů. Bronzový +5 %, Stříbrný +10 %, Zlatý +15 %, Rodina +20 %. Počítá se podle ranku před nákupem. Procenta jsou v kódu: `RANK_BONUS` ve `functions/loyalty.js` a stejná hodnota `DEFAULT_RANK_BONUS` v `LoyaltyConfig.kt`.
+
+V admin appce je nahoře dlaždice **Akce a zprávy**:
+
+- **Akce „více bodů“**: 2× nebo 3× body za nákup na zvolenou dobu (do konce dne, 24 hodin, do neděle, 7 dní). Zákazníci v appce uvidí banner a můžou dostat upozornění. Rozhoduje čas, kdy se účet na pokladně založil, takže se započítají i nákupy, které server zpracuje až po konci akce. Akce se sčítá s bonusem za rank.
+- **Zpráva zákazníkům**: push notifikace všem, nebo jen od určitého ranku. Před odesláním appka ukáže, kolik lidí ji dostane. Odeslané zprávy se ukládají do kolekce `broadcasts`.
+
+Příklad: nákup za 640 Kč, rank Zlatý, běží dvojité body → 64 b + 64 b akce + 19 b za rank = **147 b**. Zákazník rozpis vidí v pohybech bodů.
+
+Běžící akce je uložená ve Firestore v `config/loyalty` a zapisuje ji jen server (funkce `adminUpdateLoyalty`, `adminBroadcast`, kód v `functions/loyalty.js`). Aby to fungovalo, je potřeba jednou `firebase deploy --only functions`.
+
+---
+
+## Google Peněženka (kartička v Google Wallet)
+
+Zákazník klepne v appce na **Přidat do Peněženky Google** a kartička s čárovým kódem se mu uloží do Peněženky. Ukáže ji u pokladny i bez otevření appky, případně rovnou ze zamčené obrazovky. Body, sleva a rank se na kartičce aktualizují samy při každé změně (funkce `syncWalletPass`).
+
+Jak to funguje: kartičku zakládá a podepisuje server (`functions/wallet.js`), appka jen dostane podepsaný odkaz. Klíč servisního účtu je proto jen v Secret Manageru, stejně jako token Dotykačky.
+
+### Co je potřeba jednou nastavit (cca 20 minut)
+
+1. **Účet vydavatele:** otevři https://pay.google.com/business/console, přihlas se a založ firemní profil (CannaClub, adresa prodejny). V sekci **Google Wallet API** najdeš **Issuer ID**, dlouhé číslo.
+2. **Zapnout API:** v https://console.cloud.google.com vyber projekt `cannaapp-e4e8b` → *APIs & Services* → *Library* → vyhledej **Google Wallet API** → *Enable*.
+3. **Servisní účet:** tamtéž *IAM & Admin* → *Service Accounts* → *Create service account*, název třeba `wallet-issuer`. Role nepřidávej, dej rovnou *Done*. Pak ho otevři → *Keys* → *Add key* → *Create new key* → **JSON**. Stáhne se soubor s klíčem.
+4. **Pustit servisní účet k Peněžence:** zpátky v Pay & Wallet Console → *Users* → pozvi e-mail servisního účtu (`wallet-issuer@cannaapp-e4e8b.iam.gserviceaccount.com`) s rolí **Developer**.
+5. **Issuer ID** vlož do `functions/.env`:
+   ```
+   WALLET_ISSUER_ID=3388000000012345678
+   ```
+6. **Klíč do Secret Manageru** (a pak stažený JSON smaž, do gitu nepatří):
+   ```
+   firebase functions:secrets:set WALLET_SA_KEY --data-file C:\Users\matas\Downloads\klic.json
+   ```
+7. **Nasazení:** `firebase deploy --only functions`. Přibydou 3 funkce: `walletPassJwt`, `syncWalletPass`, `walletAsset`.
+
+> Pozor: dokud neexistuje secret `WALLET_SA_KEY`, deploy funkcí selže. Pokud chceš nasadit něco jiného dřív, než máš Peněženku nastavenou, vlož do secretu dočasně libovolný text (`firebase functions:secrets:set WALLET_SA_KEY` a napiš třeba `zatim-ne`). Tlačítko v appce pak jen ohlásí, že Peněženka ještě není nastavená.
+
+### Testování a zveřejnění
+
+- Nový účet vydavatele je v **demo režimu**: kartičku si uloží jen účty přidané v Pay & Wallet Console (*Users* nebo *Test accounts*). Přidej tam svůj Google účet a vyzkoušej to.
+- Pro všechny zákazníky: v Pay & Wallet Console → *Google Wallet API* → **Request publishing access**. Google žádost ručně schvaluje (obvykle pár dní). Vzhledem k sortimentu (CBD/konopí) může být schvalování přísnější, v žádosti uveď, že jde o věrnostní program kamenné prodejny pro dospělé.
+- Vzhled kartičky: zelená `#3E5E35`, logo a banner jsou v `functions/wallet-assets/` (Google si je stahuje přes funkci `walletAsset`). Když je změníš, zvyš `CLASS_VERSION` ve `wallet.js` a kartičky se přepíšou.
+
+| Chyba v logu `walletPassJwt` | Příčina |
+|---|---|
+| Google Wallet 403 | Servisní účet není pozvaný v Pay & Wallet Console, nebo není zapnuté Google Wallet API |
+| Google odmítl přihlášení servisního účtu | Špatný nebo neúplný JSON v `WALLET_SA_KEY` |
+| chybí WALLET_ISSUER_ID | Není vyplněné v `functions/.env` (a znovu nasadit) |
+
 ## Soubory
 
 - `functions/index.js` – serverová logika (Dotykačka, body, notifikace)
@@ -137,5 +190,8 @@ V admin appce dole klikni na **Převzít zákazníky z pokladny**. Appka nejdř�
 - `tools/dotykacka-connector.html` – získání Refresh Tokenu
 - `tools/dotykacka-test.mjs` – ověření údajů a zjištění Branch ID
 - `app/.../repository/DotykackaRepository.kt` – appka jen volá funkci `assignCustomerToOrder`
+- `functions/loyalty.js` – bonus za rank, akce „více bodů“, hromadné zprávy
+- `functions/wallet.js`, `functions/wallet-assets/` – kartička v Google Peněžence
+- `app/.../repository/WalletRepository.kt` – tlačítko Přidat do Peněženky Google
 
 Dokumentace Dotykačky: https://docs.api.dotypos.com (Authorization, POS Actions, Order, Customer).

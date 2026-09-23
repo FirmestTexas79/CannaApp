@@ -48,6 +48,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import cz.cannaclub.cannaapp.R
 import cz.cannaclub.cannaapp.ShortcutRequests
+import cz.cannaclub.cannaapp.WalletEvents
+import cz.cannaclub.cannaapp.ui.components.AddToWalletButton
+import cz.cannaclub.cannaapp.model.LoyaltyConfig
+import cz.cannaclub.cannaapp.model.Promo
 import cz.cannaclub.cannaapp.model.Transaction
 import cz.cannaclub.cannaapp.model.User
 import cz.cannaclub.cannaapp.ui.components.CannaIcon
@@ -60,11 +64,14 @@ import cz.cannaclub.cannaapp.ui.components.RankBadge
 import cz.cannaclub.cannaapp.ui.components.SectionLabel
 import cz.cannaclub.cannaapp.ui.components.SystemBarsAppearance
 import cz.cannaclub.cannaapp.ui.components.WOLT_URL
+import cz.cannaclub.cannaapp.ui.components.czechUntil
 import cz.cannaclub.cannaapp.ui.components.iconRes
 import cz.cannaclub.cannaapp.ui.theme.Background
 import cz.cannaclub.cannaapp.ui.theme.BorderSoft
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
 import cz.cannaclub.cannaapp.ui.theme.Cream
+import cz.cannaclub.cannaapp.ui.theme.Honey
+import androidx.compose.ui.graphics.lerp
 import cz.cannaclub.cannaapp.ui.theme.Paper
 import cz.cannaclub.cannaapp.ui.theme.PillBackground
 import cz.cannaclub.cannaapp.ui.theme.PointsGreen
@@ -90,6 +97,19 @@ fun DashboardScreen(
     val transactions   by viewModel.transactions.collectAsState()
     val celebration    by viewModel.celebration.collectAsState()
     val showOnboarding by viewModel.showOnboarding.collectAsState()
+    val walletSaved    by viewModel.walletSaved.collectAsState()
+    val walletBusy     by viewModel.walletBusy.collectAsState()
+    val loyalty        by viewModel.loyalty.collectAsState()
+    val walletEvent    by WalletEvents.saved.collectAsState()
+    val activity       = LocalContext.current as? android.app.Activity
+
+    // Peněženka potvrdila uložení kartičky
+    LaunchedEffect(walletEvent) {
+        if (walletEvent) {
+            viewModel.onWalletSaved()
+            WalletEvents.consume()
+        }
+    }
 
     DashboardContent(
         user                 = user,
@@ -100,7 +120,11 @@ fun DashboardScreen(
         onOnboardingFinished = { viewModel.onboardingFinished() },
         onOpenOnboarding     = { viewModel.openOnboarding() },
         onLogout             = onLogout,
-        onProductsClick      = onProductsClick
+        onProductsClick      = onProductsClick,
+        walletSaved          = walletSaved,
+        walletBusy           = walletBusy,
+        onAddToWallet        = { activity?.let { viewModel.addToWallet(it) } },
+        loyalty              = loyalty
     )
 }
 
@@ -120,7 +144,11 @@ fun DashboardContent(
     onOpenOnboarding: () -> Unit,
     onLogout: () -> Unit,
     onProductsClick: () -> Unit,
-    initialOverlay: DashboardOverlay = DashboardOverlay.NONE
+    initialOverlay: DashboardOverlay = DashboardOverlay.NONE,
+    walletSaved: Boolean = false,
+    walletBusy: Boolean = false,
+    onAddToWallet: () -> Unit = {},
+    loyalty: LoyaltyConfig = LoyaltyConfig()
 ) {
     val showCardReq    by ShortcutRequests.showCard.collectAsState()
 
@@ -206,12 +234,21 @@ fun DashboardContent(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
 
+                // ── Běžící akce (dvojité body…) ───────────────
+                loyalty.activePromo()?.let { promo ->
+                    item {
+                        PromoBanner(promo)
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+
                 // ── Karta bodů ────────────────────────────────
                 item {
                     PointsCard(
                         points         = user?.points ?: 0,
                         totalPoints    = user?.totalPoints ?: 0,
-                        onRewardsClick = { showRewards = true }
+                        onRewardsClick = { showRewards = true },
+                        loyalty        = loyalty
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                 }
@@ -223,6 +260,15 @@ fun DashboardContent(
                         onClick = { showCard = true }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
+                    // Dokud kartička není v Peněžence, nabízíme ji tady; pak už jen v profilu
+                    if (!walletSaved && user?.memberCode?.isNotBlank() == true) {
+                        AddToWalletButton(
+                            onClick  = onAddToWallet,
+                            busy     = walletBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
                 }
 
                 // ── Rychlé akce ───────────────────────────────
@@ -326,7 +372,8 @@ fun DashboardContent(
         ) {
             RewardsSheet(
                 currentPoints = user?.points ?: 0,
-                totalPoints   = user?.totalPoints ?: 0
+                totalPoints   = user?.totalPoints ?: 0,
+                loyalty       = loyalty
             )
         }
     }
@@ -342,6 +389,11 @@ fun DashboardContent(
             ) {
                 ProfileSheet(
                     user         = u,
+                    walletSaved  = walletSaved,
+                    onWallet     = {
+                        showProfile = false
+                        onAddToWallet()
+                    },
                     onHowItWorks = {
                         showProfile = false
                         onOpenOnboarding()
@@ -378,6 +430,51 @@ fun DashboardContent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Banner běžící akce: "Dvojité body · za každý nákup 2× víc bodů · do neděle 23:59". */
+@Composable
+private fun PromoBanner(promo: Promo) {
+    Row(
+        modifier          = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(
+                androidx.compose.ui.graphics.Brush.linearGradient(
+                    listOf(Honey, lerp(Honey, Color(0xFFB9791F), 0.6f))
+                )
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier         = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.25f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text  = "${promo.multiplier}×",
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White
+            )
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text  = promo.label,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White
+            )
+            Text(
+                text  = "Za každý nákup ${promo.multiplier}× víc bodů · ${czechUntil(promo.endsAtMillis)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.9f)
+            )
+        }
+        CannaIcon(id = R.drawable.ic_sparkle, tint = Color.White, size = 22.dp)
+    }
+}
 
 @Composable
 private fun ShowCardButton(ready: Boolean, onClick: () -> Unit) {
@@ -510,7 +607,8 @@ fun TransactionRow(transaction: Transaction) {
                 maxLines = 1
             )
             Text(
-                text  = timeFmt.format(transaction.createdAt.toDate()),
+                text  = listOfNotNull(timeFmt.format(transaction.createdAt.toDate()), transaction.breakdown)
+                    .joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = TextFaint
             )
@@ -526,7 +624,13 @@ fun TransactionRow(transaction: Transaction) {
 // ── Profil ───────────────────────────────────────────────────────────────────
 
 @Composable
-private fun ProfileSheet(user: User, onHowItWorks: () -> Unit, onLogout: () -> Unit) {
+private fun ProfileSheet(
+    user: User,
+    walletSaved: Boolean,
+    onWallet: () -> Unit,
+    onHowItWorks: () -> Unit,
+    onLogout: () -> Unit
+) {
     Column(
         modifier            = Modifier
             .fillMaxWidth()
@@ -582,6 +686,15 @@ private fun ProfileSheet(user: User, onHowItWorks: () -> Unit, onLogout: () -> U
                 .background(Paper)
                 .border(1.dp, BorderSoft, RoundedCornerShape(18.dp))
         ) {
+            if (user.memberCode.isNotBlank()) {
+                ActionRow(
+                    R.drawable.ic_wallet,
+                    if (walletSaved) "Kartička v Peněžence Google" else "Přidat do Peněženky Google",
+                    TextPrimary,
+                    onWallet
+                )
+                HorizontalDivider(color = BorderSoft)
+            }
             ActionRow(R.drawable.ic_info, "Jak to funguje", TextPrimary, onHowItWorks)
             HorizontalDivider(color = BorderSoft)
             ActionRow(R.drawable.ic_logout, "Odhlásit se", PointsRed, onLogout)

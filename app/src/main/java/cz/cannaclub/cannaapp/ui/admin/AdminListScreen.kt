@@ -75,7 +75,8 @@ private val PillHorizontalPadding = 12.dp
 fun AdminListScreen(
     viewModel: AdminViewModel,
     onLogout: () -> Unit,
-    onProductsClick: () -> Unit = {}
+    onProductsClick: () -> Unit = {},
+    onLoyaltyClick: () -> Unit = {}
 ) {
     val users        by viewModel.filteredUsers.collectAsState()
     val searchQuery  by viewModel.searchQuery.collectAsState()
@@ -172,6 +173,27 @@ fun AdminListScreen(
                         StatTile(R.drawable.ic_users, "${stats.customers}", "zákazníků", Modifier.weight(1f))
                         StatTile(R.drawable.ic_tag, "${stats.pointsOpen}", "bodů = Kč", Modifier.weight(1f))
                         StatTile(R.drawable.ic_trend, "+${stats.newThisWeek}", "za 7 dní", Modifier.weight(1f))
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Rychlé dlaždice: akce a zprávy + správa produktů
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NavTile(
+                            icon       = R.drawable.ic_sparkle,
+                            title      = "Akce a zprávy",
+                            subtitle   = "Body a notifikace",
+                            background = GoldDim,
+                            onClick    = onLoyaltyClick,
+                            modifier   = Modifier.weight(1f)
+                        )
+                        NavTile(
+                            icon       = R.drawable.ic_leaf,
+                            title      = "Naše zeleň",
+                            subtitle   = "Správa produktů",
+                            background = CardDefault,
+                            onClick    = onProductsClick,
+                            modifier   = Modifier.weight(1f)
+                        )
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                 }
@@ -275,63 +297,26 @@ fun AdminListScreen(
                     }
                 }
 
-                // ── Správa produktů ───────────────────────
+                // ── Převzetí zákazníků z pokladny (málo používané → malé, dole) ──
                 item {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(CardDefault)
-                            .clickable { onProductsClick() }
-                            .padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalAlignment     = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(
-                                text  = "SPRÁVA PRODUKTŮ",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextMuted
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text  = "Naše zeleň",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = TextPrimary
-                            )
-                        }
-                        CannaIcon(id = R.drawable.ic_chevron_right, tint = TextMuted, size = 20.dp)
-                    }
-
-                    // ── Import zákazníků z Dotykačky ──────────
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(CardDefault)
+                        modifier          = Modifier
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable { viewModel.previewImport() }
-                            .padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalAlignment     = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text  = "DOTYKAČKA",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextMuted
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text  = "Převzít zákazníky z pokladny",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = TextPrimary
-                            )
-                        }
-                        CannaIcon(id = R.drawable.ic_chevron_right, tint = TextMuted, size = 20.dp)
+                        CannaIcon(id = R.drawable.ic_users, tint = TextFaint, size = 16.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text  = "Převzít zákazníky z pokladny",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextFaint
+                        )
                     }
-
+                    }
                 }
             }
         }
@@ -520,5 +505,42 @@ private fun StatTile(icon: Int, value: String, label: String, modifier: Modifier
             color    = TextMuted,
             maxLines = 1
         )
+    }
+}
+
+/** Obdélníková dlaždice v hlavičce adminu (Akce a zprávy, Naše zeleň). */
+@Composable
+private fun NavTile(
+    icon: Int,
+    title: String,
+    subtitle: String,
+    background: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier          = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(background)
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CannaIcon(id = icon, tint = Gold, size = 22.dp)
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text     = title,
+                style    = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color    = TextPrimary,
+                maxLines = 1
+            )
+            Text(
+                text     = subtitle,
+                style    = MaterialTheme.typography.bodySmall,
+                color    = TextMuted,
+                maxLines = 1
+            )
+        }
     }
 }

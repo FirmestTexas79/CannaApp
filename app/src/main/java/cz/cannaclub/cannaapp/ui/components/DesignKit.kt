@@ -4,6 +4,9 @@ import android.app.Activity
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -176,5 +179,65 @@ fun SystemBarsAppearance(lightBackground: Boolean) {
             }
         }
         onDispose { }
+    }
+}
+
+// ── Google Peněženka ─────────────────────────────────────────────────────────
+
+/**
+ * Tlačítko "Přidat do Peněženky Google" podle pravidel Googlu:
+ * tmavá pilulka + oficiální česká grafika (res/drawable/wallet_button_content_cs.xml, neupravovat).
+ */
+@Composable
+fun AddToWalletButton(onClick: () -> Unit, modifier: Modifier = Modifier, busy: Boolean = false) {
+    Box(
+        modifier         = modifier
+            .height(48.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+            .background(Color(0xFF1F1F1F))
+            .border(1.dp, Color(0xFF747775), androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+            .clickable(enabled = !busy) { onClick() }
+            .padding(horizontal = 24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (busy) {
+            androidx.compose.material3.CircularProgressIndicator(
+                modifier    = Modifier.size(22.dp),
+                color       = Color.White,
+                strokeWidth = 2.dp
+            )
+        } else {
+            androidx.compose.foundation.Image(
+                painter            = painterResource(R.drawable.wallet_button_content_cs),
+                contentDescription = "Přidat do Peněženky Google",
+                modifier           = Modifier.height(24.dp)
+            )
+        }
+    }
+}
+
+// ── Čas konce akce česky ─────────────────────────────────────────────────────
+
+/** "dnes do 23:59", "zítra do 18:00", "do neděle 23:59", "do 3. 10. 23:59". */
+fun czechUntil(millis: Long, now: Long = System.currentTimeMillis()): String {
+    val end = java.util.Calendar.getInstance().apply { timeInMillis = millis }
+    val today = java.util.Calendar.getInstance().apply { timeInMillis = now }
+    val time = String.format(java.util.Locale.ROOT, "%d:%02d", end.get(java.util.Calendar.HOUR_OF_DAY), end.get(java.util.Calendar.MINUTE))
+    val days = run {
+        fun dayNo(c: java.util.Calendar) = c.get(java.util.Calendar.YEAR) * 400 + c.get(java.util.Calendar.DAY_OF_YEAR)
+        dayNo(end) - dayNo(today)
+    }
+    // 2. pád dní v týdnu (do pondělí, do středy…)
+    val genitive = mapOf(
+        java.util.Calendar.MONDAY to "pondělí", java.util.Calendar.TUESDAY to "úterý",
+        java.util.Calendar.WEDNESDAY to "středy", java.util.Calendar.THURSDAY to "čtvrtka",
+        java.util.Calendar.FRIDAY to "pátku", java.util.Calendar.SATURDAY to "soboty",
+        java.util.Calendar.SUNDAY to "neděle"
+    )
+    return when {
+        days <= 0 -> "dnes do $time"
+        days == 1 -> "zítra do $time"
+        days < 7  -> "do ${genitive[end.get(java.util.Calendar.DAY_OF_WEEK)]} $time"
+        else      -> "do ${end.get(java.util.Calendar.DAY_OF_MONTH)}. ${end.get(java.util.Calendar.MONTH) + 1}. $time"
     }
 }

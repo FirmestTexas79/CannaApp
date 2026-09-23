@@ -13,6 +13,8 @@
  *  - notifyOnTransaction    (Firestore trigger) → push notifikace při každé změně bodů
  *  - importDotykackaCustomers (callable) → založí v appce účty stávajícím zákazníkům z Dotykačky
  *  - dotykackaStatus        (callable)  → diagnostika spojení z admin appky / při nastavování
+ *  - walletPassJwt / syncWalletPass / walletAsset → kartička v Google Peněžence (wallet.js)
+ *  - adminUpdateLoyalty / adminBroadcast → bonusy za rank, akce "více bodů", hromadné zprávy (loyalty.js)
  *
  * Nastavení: viz DOTYKACKA_NAVOD.md v kořeni repa.
  */
@@ -31,6 +33,7 @@ const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
 const db = getFirestore();
+const loyalty = require("./loyalty");
 
 // Firestore běží v nam5 → funkce musí být v us-central1 (europe-west1 nefunguje)
 setGlobalOptions({ region: "us-central1", maxInstances: 5 });
@@ -571,7 +574,7 @@ async function syncPendingCustomers(stateRef, backfilled) {
 async function awardOrder(order, total) {
   const orderRef = db.collection("dotykacka_orders").doc(String(order.id));
   const usersQuery = db.collection("users").where("dotykackaId", "==", String(order._customerId)).limit(1);
-  const points = Math.floor(total / KC_PER_POINT.value());
+  const config = await loyalty.getConfig();
 
   return db.runTransaction(async (tx) => {
     const processed = await tx.get(orderRef);
@@ -592,7 +595,16 @@ async function awardOrder(order, total) {
     }
 
     const userRef = users.docs[0].ref;
-    tx.set(orderRef, { ...base, status: "awarded", userId: userRef.id, points });
+    // Bonus za rank se počítá podle ranku PŘED nákupem, akce podle času vytvoření účtu na pokladně
+    const calc = loyalty.computePoints({
+      total,
+      kcPerPoint: KC_PER_POINT.value(),
+      totalPointsBefore: Number(users.docs[0].get("totalPoints") || 0),
+      config,
+      orderMillis: toMillis(order.created) || Date.now(),
+    });
+    const points = calc.points;
+    tx.set(orderRef, { ...base, status: "awarded", userId: userRef.id, points, breakdown: calc });
     if (points <= 0) return false;
 
     tx.update(userRef, {
@@ -605,6 +617,12 @@ async function awardOrder(order, total) {
       type: "ADD",
       amount: points,
       reason: `Nákup ${Math.round(total)} Kč`,
+      // Rozpis pro appku: "64 b + 64 b akce + 19 b za rank Zlatý"
+      basePoints: calc.base,
+      promoBonus: calc.promoBonus,
+      promoLabel: calc.promoLabel,
+      rankBonus: calc.rankBonus,
+      rankLabel: calc.rankLabel,
       createdAt: FieldValue.serverTimestamp(),
     });
     return true;
@@ -665,3 +683,17 @@ exports.notifyOnTransaction = onDocumentCreated("users/{userId}/transactions/{tx
     }
   }
 });
+
+// ════════════════════════════════════════════════════════════════════
+// 6) Členská kartička v Google Peněžence — viz wallet.js
+// ════════════════════════════════════════════════════════════════════
+const wallet = require("./wallet");
+exports.walletPassJwt = wallet.walletPassJwt;
+exports.syncWalletPass = wallet.syncWalletPass;
+exports.walletAsset = wallet.walletAsset;
+
+// ════════════════════════════════════════════════════════════════════
+// 7) Bonusy za rank, akce "více bodů", hromadné zprávy — viz loyalty.js
+// ════════════════════════════════════════════════════════════════════
+exports.adminUpdateLoyalty = loyalty.adminUpdateLoyalty;
+exports.adminBroadcast = loyalty.adminBroadcast;

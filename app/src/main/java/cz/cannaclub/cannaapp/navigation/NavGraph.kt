@@ -9,6 +9,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import cz.cannaclub.cannaapp.ui.admin.AdminListScreen
 import cz.cannaclub.cannaapp.ui.admin.AdminLoginScreen
+import cz.cannaclub.cannaapp.ui.admin.AdminLoyaltyScreen
+import cz.cannaclub.cannaapp.viewmodel.LoyaltyAdminViewModel
 import cz.cannaclub.cannaapp.ui.components.ProductShowcaseScreen
 import cz.cannaclub.cannaapp.ui.user.DashboardScreen
 import cz.cannaclub.cannaapp.ui.user.LoginScreen
@@ -29,6 +31,7 @@ object Routes {
     const val ADMIN_LIST        = "admin_list"
     const val PRODUCT_SHOWCASE  = "product_showcase"
     const val ADMIN_PRODUCTS    = "admin_products"
+    const val ADMIN_LOYALTY     = "admin_loyalty"
 }
 
 @Composable
@@ -147,7 +150,19 @@ fun CannaNavGraph(
                 },
                 onProductsClick = {
                     navController.navigate(Routes.ADMIN_PRODUCTS)
+                },
+                onLoyaltyClick  = {
+                    navController.navigate(Routes.ADMIN_LOYALTY)
                 }
+            )
+        }
+
+        // ── Admin: akce, bonusy za rank, zprávy ──────────────
+        composable(Routes.ADMIN_LOYALTY) {
+            val loyaltyViewModel: LoyaltyAdminViewModel = viewModel()
+            AdminLoyaltyScreen(
+                viewModel = loyaltyViewModel,
+                onBack    = { navController.popBackStack() }
             )
         }
 

@@ -16,6 +16,7 @@ class UserPreferences(context: Context) {
         private const val KEY_LOGGED_IN = "logged_in"    // automatické přihlášení po spuštění
         private const val KEY_ONBOARDED = "onboarding_done"
         private const val KEY_SEEN_PTS  = "seen_points_"  // + userId → poslední zobrazený stav bodů
+        private const val KEY_WALLET    = "wallet_saved_" // + userId → kartička je v Google Peněžence
     }
 
     fun saveUser(name: String, email: String, phone: String, userId: String) {
@@ -53,6 +54,10 @@ class UserPreferences(context: Context) {
     fun setSeenPoints(userId: String, points: Int) {
         prefs.edit().putInt(KEY_SEEN_PTS + userId, points).apply()
     }
+
+    /** Kartička je uložená v Google Peněžence → tlačítko se z hlavní obrazovky schová (zůstane v profilu). */
+    fun isWalletSaved(userId: String): Boolean = prefs.getBoolean(KEY_WALLET + userId, false)
+    fun setWalletSaved(userId: String) { prefs.edit().putBoolean(KEY_WALLET + userId, true).apply() }
 
     fun clearUser() {
         prefs.edit().clear().apply()

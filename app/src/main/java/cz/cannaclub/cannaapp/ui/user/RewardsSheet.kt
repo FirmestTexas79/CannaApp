@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import cz.cannaclub.cannaapp.R
+import cz.cannaclub.cannaapp.model.LoyaltyConfig
 import cz.cannaclub.cannaapp.model.MemberRank
 import cz.cannaclub.cannaapp.ui.components.CannaIcon
 import cz.cannaclub.cannaapp.ui.components.IconBubble
@@ -72,7 +73,8 @@ val shopItems = listOf(
 @Composable
 fun RewardsSheet(
     currentPoints: Int,
-    totalPoints: Int
+    totalPoints: Int,
+    loyalty: LoyaltyConfig = LoyaltyConfig()
 ) {
     val currentRank = MemberRank.forPoints(totalPoints)
     val nextRank    = currentRank.next
@@ -197,7 +199,9 @@ fun RewardsSheet(
                     color = TextPrimary
                 )
                 Text(
-                    text  = "Celkem nasbíráno $totalPoints b",
+                    text  = loyalty.bonusFor(currentRank).let { b ->
+                        if (b > 0) "+$b % bodů za každý nákup · celkem $totalPoints b" else "Celkem nasbíráno $totalPoints b"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
@@ -205,7 +209,10 @@ fun RewardsSheet(
                 ProgressBar(progress = currentRank.progress(totalPoints), color = currentRank.color)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text  = nextRank?.let { "Do ranku ${it.label} chybí ${it.requiredPoints - totalPoints} b" }
+                    text  = nextRank?.let {
+                        val nb = loyalty.bonusFor(it)
+                        "Do ranku ${it.label}${if (nb > 0) " (+$nb % bodů)" else ""} chybí ${it.requiredPoints - totalPoints} b"
+                    }
                             ?: "Nejvyšší rank, patříš do rodiny",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextFaint
@@ -233,7 +240,11 @@ fun RewardsSheet(
                         color = if (unlocked) TextPrimary else TextMuted
                     )
                     Text(
-                        text  = if (rank.requiredPoints == 0) "Hned od registrace" else "od ${rank.requiredPoints} nasbíraných bodů",
+                        text  = buildString {
+                            append(if (rank.requiredPoints == 0) "Hned od registrace" else "od ${rank.requiredPoints} nasbíraných bodů")
+                            val b = loyalty.bonusFor(rank)
+                            if (b > 0) append(" · +$b % bodů")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = TextFaint
                     )

@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cz.cannaclub.cannaapp.R
+import cz.cannaclub.cannaapp.model.LoyaltyConfig
 import cz.cannaclub.cannaapp.model.MemberRank
 import cz.cannaclub.cannaapp.ui.theme.Brand
 import cz.cannaclub.cannaapp.ui.theme.Forest
@@ -53,7 +54,8 @@ fun PointsCard(
     points: Int,
     totalPoints: Int,
     onRewardsClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    loyalty: LoyaltyConfig = LoyaltyConfig()
 ) {
     val animated = remember { Animatable(points.toFloat()) }
     LaunchedEffect(points) {
@@ -94,7 +96,7 @@ fun PointsCard(
                 verticalAlignment     = Alignment.CenterVertically
             ) {
                 SectionLabel("Věrnostní body", color = OnBrand.copy(alpha = 0.72f))
-                RankChip(rank)
+                RankChip(rank, loyalty.bonusFor(rank))
             }
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -145,8 +147,10 @@ fun PointsCard(
                 verticalAlignment     = Alignment.CenterVertically
             ) {
                 Text(
-                    text  = if (next != null) "Do ranku ${next.label} chybí ${next.requiredPoints - totalPoints} b"
-                            else "Nejvyšší rank, patříš do rodiny",
+                    text  = if (next != null) {
+                        val nb = loyalty.bonusFor(next)
+                        "Do ranku ${next.label}${if (nb > 0) " (+$nb % bodů)" else ""} chybí ${next.requiredPoints - totalPoints} b"
+                    } else "Nejvyšší rank, patříš do rodiny",
                     style = MaterialTheme.typography.bodySmall,
                     color = OnBrand.copy(alpha = 0.75f)
                 )
@@ -164,7 +168,7 @@ fun PointsCard(
 }
 
 @Composable
-private fun RankChip(rank: MemberRank) {
+private fun RankChip(rank: MemberRank, bonusPct: Int) {
     Row(
         modifier          = Modifier
             .clip(RoundedCornerShape(20.dp))
@@ -175,7 +179,7 @@ private fun RankChip(rank: MemberRank) {
         RankBadge(rank = rank, size = 20.dp)
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-            text  = rank.label,
+            text  = if (bonusPct > 0) "${rank.label} · +$bonusPct %" else rank.label,
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
             color = OnBrand
         )
