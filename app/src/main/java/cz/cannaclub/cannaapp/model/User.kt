@@ -8,12 +8,12 @@ data class User(
     val email: String = "",
     val phone: String = "",
     val points: Int = 0,
-    val totalPoints: Int = 0,   // celkové nasbírané body — základ pro rank
+    val totalPoints: Int = 0,
     val dotykackaId: String = "",
+    val fcmToken: String = "",      // ← přidej toto
     val createdAt: Timestamp = Timestamp.now()
 ) {
-    constructor() : this("", "", "", "", 0, 0, "", Timestamp.now())
-
+    constructor() : this("", "", "", "", 0, 0, "", "", Timestamp.now())
     val initials: String
         get() = name
             .split(" ")

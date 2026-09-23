@@ -11,11 +11,14 @@ import cz.cannaclub.cannaapp.ui.admin.AdminLoginScreen
 import cz.cannaclub.cannaapp.ui.components.ProductShowcaseScreen
 import cz.cannaclub.cannaapp.ui.user.DashboardScreen
 import cz.cannaclub.cannaapp.ui.user.LoginScreen
+import cz.cannaclub.cannaapp.ui.user.SplashScreen
 import cz.cannaclub.cannaapp.viewmodel.AdminViewModel
 import cz.cannaclub.cannaapp.viewmodel.ProductViewModel
 import cz.cannaclub.cannaapp.viewmodel.UserViewModel
 
 object Routes {
+
+    const val SPLASH            = "splash"
     const val USER_LOGIN        = "user_login"
     const val DASHBOARD         = "dashboard"
     const val ADMIN_LOGIN       = "admin_login"
@@ -34,8 +37,19 @@ fun CannaNavGraph(
 
     NavHost(
         navController    = navController,
-        startDestination = Routes.USER_LOGIN
+        startDestination = Routes.SPLASH
     ) {
+
+        // ── Splash ────────────────────────────────────────────
+        composable(Routes.SPLASH) {
+            SplashScreen(
+                onFinished = {
+                    navController.navigate(Routes.USER_LOGIN) {
+                        popUpTo(Routes.SPLASH) { inclusive = true }
+                    }
+                }
+            )
+        }
 
         // ── User Login ────────────────────────────────────────
         composable(Routes.USER_LOGIN) {

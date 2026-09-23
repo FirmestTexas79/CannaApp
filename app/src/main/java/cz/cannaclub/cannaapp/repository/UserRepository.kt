@@ -66,6 +66,7 @@ class UserRepository {
         awaitClose { listener.remove() }
     }
 
+
     suspend fun getUserById(userId: String): User? {
         return try {
             val doc = usersCol.document(userId).get().await()
@@ -148,4 +149,28 @@ class UserRepository {
             false
         }
     }
+
+    // Přidej na konec UserRepository.kt
+    suspend fun updateDotykackaId(userId: String, dotykackaId: String): Boolean {
+        return try {
+            usersCol.document(userId)
+                .update("dotykackaId", dotykackaId)
+                .await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+    // Uloží FCM token do Firestore
+    suspend fun saveFcmToken(userId: String, token: String): Boolean {
+        return try {
+            usersCol.document(userId)
+                .update("fcmToken", token)
+                .await()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
 }

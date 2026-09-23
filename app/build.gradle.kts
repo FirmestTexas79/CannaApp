@@ -40,6 +40,12 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {
@@ -80,6 +86,7 @@ dependencies {
 
     implementation("com.google.guava:guava:33.0.0-android")
 
-
     implementation(libs.accompanist.permissions)
+
+    implementation(libs.firebase.messaging.ktx)
 }

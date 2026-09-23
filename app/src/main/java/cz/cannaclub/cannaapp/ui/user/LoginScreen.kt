@@ -1,5 +1,6 @@
 package cz.cannaclub.cannaapp.ui.user
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -52,6 +53,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 import cz.cannaclub.cannaapp.R
 import cz.cannaclub.cannaapp.ui.components.DecorativePlants
 import cz.cannaclub.cannaapp.ui.theme.Background
@@ -66,9 +69,12 @@ import cz.cannaclub.cannaapp.ui.theme.TextMuted
 import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 import cz.cannaclub.cannaapp.viewmodel.LoginState
 import cz.cannaclub.cannaapp.viewmodel.UserViewModel
+import android.Manifest
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
 
 private val PillHorizontalPadding = 28.dp
 
+@OptIn(com.google.accompanist.permissions.ExperimentalPermissionsApi::class)
 @Composable
 fun LoginScreen(
     viewModel: UserViewModel,
@@ -82,6 +88,24 @@ fun LoginScreen(
     val loginState        by viewModel.loginState.collectAsState()
     val focusManager      = LocalFocusManager.current
     val snackbarHostState = remember { SnackbarHostState() }
+
+
+    // Žádost o povolení notifikací (Android 13+)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        @OptIn(ExperimentalPermissionsApi::class)
+        @Composable
+        fun RequestNotificationPermission() {
+            val notifPermission = rememberPermissionState(
+                permission = Manifest.permission.POST_NOTIFICATIONS
+            )
+            LaunchedEffect(Unit) {
+                if (!notifPermission.status.isGranted) {
+                    notifPermission.launchPermissionRequest()
+                }
+            }
+        }
+    }
+
 
     LaunchedEffect(loginState) {
         when (val state = loginState) {

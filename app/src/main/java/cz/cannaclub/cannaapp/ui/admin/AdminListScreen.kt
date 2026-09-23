@@ -282,10 +282,10 @@ fun AdminListScreen(
     // ── QR Skener ─────────────────────────────────────────
     if (showScanner) {
         QrScannerDialog(
+            viewModel = viewModel,
             onDismiss = { showScanner = false },
             onScanned = { scannedUserId ->
                 showScanner = false
-                // Hledá přímo ve Firestore — spolehlivější než lokální seznam
                 viewModel.findUserByQrCode(scannedUserId)
             }
         )
@@ -296,8 +296,8 @@ fun AdminListScreen(
         EditPointsDialog(
             user      = user,
             onDismiss = { selectedUser = null },
-            onSave    = { newPoints ->
-                viewModel.updatePoints(user, newPoints)
+            onSave    = { newPoints, reason ->        // ← přidán reason
+                viewModel.updatePoints(user, newPoints, reason)
                 selectedUser = null
             }
         )

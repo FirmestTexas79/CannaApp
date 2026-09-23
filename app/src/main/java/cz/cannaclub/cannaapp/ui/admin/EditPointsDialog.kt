@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,23 +43,32 @@ import androidx.compose.ui.window.Dialog
 import cz.cannaclub.cannaapp.model.User
 import cz.cannaclub.cannaapp.ui.theme.BorderNormal
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
-import cz.cannaclub.cannaapp.ui.theme.Gold
-import cz.cannaclub.cannaapp.ui.theme.GoldDim
 import cz.cannaclub.cannaapp.ui.theme.PillBackground
 import cz.cannaclub.cannaapp.ui.theme.PointsRed
 import cz.cannaclub.cannaapp.ui.theme.Sage
-import cz.cannaclub.cannaapp.ui.theme.SageDim
 import cz.cannaclub.cannaapp.ui.theme.SageGlow
 import cz.cannaclub.cannaapp.ui.theme.TextMuted
 import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 
+// ── Předvolené důvody ─────────────────────────────────────
+private val reasons = listOf(
+    "Vrácení obalů",
+    "Nákup v obchodě",
+    "Věrnostní bonus",
+    "Oprava chyby",
+    "Uplatnění odměny",
+    "Jiný důvod"
+)
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EditPointsDialog(
     user: User,
     onDismiss: () -> Unit,
-    onSave: (Int) -> Unit
+    onSave: (Int, String) -> Unit   // ← přidán reason parametr
 ) {
-    var points by remember { mutableStateOf(user.points) }
+    var points         by remember { mutableStateOf(user.points) }
+    var selectedReason by remember { mutableStateOf(reasons.first()) }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -68,12 +79,11 @@ fun EditPointsDialog(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // ── Hlavička — info o zákazníkovi ─────────────
+            // ── Hlavička ──────────────────────────────────
             Row(
                 modifier          = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Avatar
                 Box(
                     modifier = Modifier
                         .size(48.dp)
@@ -88,9 +98,7 @@ fun EditPointsDialog(
                         color = Sage
                     )
                 }
-
                 Spacer(modifier = Modifier.width(14.dp))
-
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text  = user.name,
@@ -113,7 +121,7 @@ fun EditPointsDialog(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // ── Rank badge + celkové body ─────────────────
+            // ── Rank + body ───────────────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -147,12 +155,49 @@ fun EditPointsDialog(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
-
             HorizontalDivider(color = BorderNormal)
-
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Label
+            // ── Důvod úpravy ──────────────────────────────
+            Text(
+                text  = "DŮVOD ÚPRAVY",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            FlowRow(
+                modifier              = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement   = Arrangement.spacedBy(8.dp)
+            ) {
+                reasons.forEach { reason ->
+                    val selected = reason == selectedReason
+                    Text(
+                        text     = reason,
+                        style    = MaterialTheme.typography.labelSmall,
+                        color    = if (selected) Sage else TextMuted,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (selected) SageGlow else CardDefault)
+                            .border(
+                                width = 1.dp,
+                                color = if (selected) Sage.copy(alpha = 0.4f) else BorderNormal,
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .clickable { selectedReason = reason }
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+            HorizontalDivider(color = BorderNormal)
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ── Editor bodů ───────────────────────────────
             Text(
                 text  = "NOVÝ ZŮSTATEK BODŮ",
                 style = MaterialTheme.typography.labelSmall,
@@ -161,14 +206,11 @@ fun EditPointsDialog(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // ── Editor bodů ───────────────────────────────
             Row(
-                modifier          = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                modifier              = Modifier.fillMaxWidth(),
+                verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-
-                // ── Mínus tlačítko ────────────────────────
                 Box(
                     modifier = Modifier
                         .size(48.dp)
@@ -179,14 +221,13 @@ fun EditPointsDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text     = "−",
-                        fontSize = 24.sp,
-                        color    = PointsRed,
+                        text      = "−",
+                        fontSize  = 24.sp,
+                        color     = PointsRed,
                         textAlign = TextAlign.Center
                     )
                 }
 
-                // ── Číslo ─────────────────────────────────
                 OutlinedTextField(
                     value         = points.toString(),
                     onValueChange = { str ->
@@ -211,7 +252,6 @@ fun EditPointsDialog(
                     )
                 )
 
-                // ── Plus tlačítko ─────────────────────────
                 Box(
                     modifier = Modifier
                         .size(48.dp)
@@ -230,14 +270,13 @@ fun EditPointsDialog(
                 }
             }
 
-            // Změna oproti původnímu
             val diff = points - user.points
             if (diff != 0) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text  = if (diff > 0) "+$diff bodů" else "$diff bodů",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (diff > 0) Sage else PointsRed,
+                    text      = if (diff > 0) "+$diff bodů" else "$diff bodů",
+                    style     = MaterialTheme.typography.bodySmall,
+                    color     = if (diff > 0) Sage else PointsRed,
                     textAlign = TextAlign.Center,
                     modifier  = Modifier.fillMaxWidth()
                 )
@@ -253,11 +292,9 @@ fun EditPointsDialog(
                 ) {
                     Text(text = "Zrušit", color = TextMuted)
                 }
-
                 Spacer(modifier = Modifier.width(10.dp))
-
                 Button(
-                    onClick  = { onSave(points) },
+                    onClick  = { onSave(points, selectedReason) },
                     modifier = Modifier.weight(2f),
                     shape    = RoundedCornerShape(12.dp),
                     colors   = ButtonDefaults.buttonColors(

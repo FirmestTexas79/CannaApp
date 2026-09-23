@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.cannaclub.cannaapp.model.User
 import cz.cannaclub.cannaapp.repository.UserRepository
+import cz.cannaclub.cannaapp.repository.dotykacka.DotykackaRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,7 +12,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 class AdminViewModel(
-    private val repository: UserRepository = UserRepository()
+    private val repository: UserRepository = UserRepository(),
+    private val dotykackaRepository: DotykackaRepository = DotykackaRepository()
 ) : ViewModel() {
 
     private val _allUsers = MutableStateFlow<List<User>>(emptyList())
@@ -28,9 +30,12 @@ class AdminViewModel(
     private val _operationState = MutableStateFlow<OperationState>(OperationState.Idle)
     val operationState: StateFlow<OperationState> = _operationState.asStateFlow()
 
-    // ── Zákazník nalezený přes QR skenování ──────────────
     private val _scannedUser = MutableStateFlow<User?>(null)
     val scannedUser: StateFlow<User?> = _scannedUser.asStateFlow()
+
+    // ── Stav Dotykačka synchronizace ─────────────────────
+    private val _dotykackaState = MutableStateFlow<DotykackaState>(DotykackaState.Idle)
+    val dotykackaState: StateFlow<DotykackaState> = _dotykackaState.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -47,20 +52,14 @@ class AdminViewModel(
         }
     }
 
-    // ─────────────────────────────────────────────────────
-    // Admin přihlášení
-    // ─────────────────────────────────────────────────────
     fun loginAdmin(email: String, password: String) {
         if (email.isBlank() || password.isBlank()) {
             _loginState.value = AdminLoginState.Error("Vyplň všechna pole")
             return
         }
-
         viewModelScope.launch {
             _loginState.value = AdminLoginState.Loading
-
             val success = repository.loginAdmin(email, password)
-
             if (success) {
                 loadUsers()
                 _loginState.value = AdminLoginState.Success
@@ -83,43 +82,67 @@ class AdminViewModel(
     }
 
     // ─────────────────────────────────────────────────────
-    // QR skenování — hledá zákazníka přímo ve Firestore
-    // Funguje i když seznam ještě není načtený
+    // QR skenování — dělá DVĚ věci najednou:
+    // 1. Najde zákazníka ve Firebase → zobrazí v admin panelu
+    // 2. Synchronizuje s Dotykačkou → přiřadí k objednávce
     // ─────────────────────────────────────────────────────
     fun findUserByQrCode(userId: String) {
         viewModelScope.launch {
+            // 1. Firebase lookup
             val user = repository.getUserById(userId)
-            if (user != null) {
-                _scannedUser.value = user
-            } else {
+            if (user == null) {
                 _operationState.value = OperationState.Error("Zákazník nenalezen")
+                return@launch
+            }
+
+            _scannedUser.value = user
+
+            // 2. Dotykačka synchronizace (na pozadí — nezablokuje UI)
+            launch {
+                _dotykackaState.value = DotykackaState.Syncing
+
+                // Synchronizuj zákazníka v Dotykačce
+                val dotykackaId = dotykackaRepository.syncCustomer(user)
+
+                if (dotykackaId != null) {
+                    // Ulož dotykackaId do Firebase pokud ho ještě nemáme
+                    if (user.dotykackaId.isBlank()) {
+                        repository.updateDotykackaId(userId, dotykackaId)
+                    }
+
+                    // Přiřaď zákazníka k aktuální objednávce
+                    val assigned = dotykackaRepository.assignCustomerToCurrentOrder(dotykackaId)
+                    _dotykackaState.value = if (assigned) {
+                        DotykackaState.Assigned
+                    } else {
+                        DotykackaState.Error("Nepodařilo se přiřadit k objednávce")
+                    }
+                } else {
+                    _dotykackaState.value = DotykackaState.Error("Dotykačka nedostupná")
+                }
             }
         }
     }
 
     fun clearScannedUser() {
         _scannedUser.value = null
+        _dotykackaState.value = DotykackaState.Idle
     }
 
-    // ─────────────────────────────────────────────────────
-    // Úprava bodů
-    // ─────────────────────────────────────────────────────
-    fun updatePoints(user: User, newPoints: Int) {
+    fun updatePoints(user: User, newPoints: Int, reason: String = "Úprava obsluhou") {
         if (newPoints < 0) {
             _operationState.value = OperationState.Error("Body nemůžou být záporné")
             return
         }
-
         viewModelScope.launch {
             _operationState.value = OperationState.Loading
-
             val success = repository.updatePoints(
                 userId         = user.id,
                 oldPoints      = user.points,
                 newPoints      = newPoints,
-                oldTotalPoints = user.totalPoints
+                oldTotalPoints = user.totalPoints,
+                reason         = reason             // ← předáme dál
             )
-
             _operationState.value = if (success) {
                 OperationState.Success("Body uloženy")
             } else {
@@ -128,9 +151,6 @@ class AdminViewModel(
         }
     }
 
-    // ─────────────────────────────────────────────────────
-    // Přidání zákazníka
-    // ─────────────────────────────────────────────────────
     fun addUser(name: String, email: String, phone: String, initialPoints: Int) {
         if (name.isBlank() || email.isBlank() || phone.isBlank()) {
             _operationState.value = OperationState.Error("Vyplň jméno, email a telefon")
@@ -140,12 +160,9 @@ class AdminViewModel(
             _operationState.value = OperationState.Error("Neplatný email")
             return
         }
-
         viewModelScope.launch {
             _operationState.value = OperationState.Loading
-
             val success = repository.addUser(name, email, phone, initialPoints)
-
             _operationState.value = if (success) {
                 OperationState.Success("Zákazník přidán")
             } else {
@@ -154,17 +171,9 @@ class AdminViewModel(
         }
     }
 
-    fun resetOperationState() {
-        _operationState.value = OperationState.Idle
-    }
-
-    fun resetLoginState() {
-        _loginState.value = AdminLoginState.Idle
-    }
-
-    fun setError(message: String) {
-        _operationState.value = OperationState.Error(message)
-    }
+    fun resetOperationState() { _operationState.value = OperationState.Idle }
+    fun resetLoginState() { _loginState.value = AdminLoginState.Idle }
+    fun setError(message: String) { _operationState.value = OperationState.Error(message) }
 
     fun logout() {
         repository.logoutAdmin()
@@ -185,4 +194,12 @@ sealed class OperationState {
     object Loading : OperationState()
     data class Success(val message: String) : OperationState()
     data class Error(val message: String)   : OperationState()
+}
+
+// ── Stav Dotykačka synchronizace ─────────────────────────
+sealed class DotykackaState {
+    object Idle     : DotykackaState()
+    object Syncing  : DotykackaState()
+    object Assigned : DotykackaState()  // zákazník přiřazen k objednávce
+    data class Error(val message: String) : DotykackaState()
 }

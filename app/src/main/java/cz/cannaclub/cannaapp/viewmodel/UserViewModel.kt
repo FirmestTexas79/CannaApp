@@ -3,6 +3,7 @@ package cz.cannaclub.cannaapp.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.messaging.FirebaseMessaging
 import cz.cannaclub.cannaapp.model.Transaction
 import cz.cannaclub.cannaapp.model.User
 import cz.cannaclub.cannaapp.preferences.UserPreferences
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 class UserViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -56,6 +58,7 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
                 userPrefs.saveUser(name, email, phone)
                 _currentUser.value = user
                 loadTransactions(user.id)
+                saveFcmToken(user.id)
                 _loginState.value = LoginState.Success
             } else {
                 _loginState.value = LoginState.Error("Zákazník nenalezen")
@@ -86,6 +89,17 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetLoginState() {
         _loginState.value = LoginState.Idle
+    }
+    private fun saveFcmToken(userId: String) {
+        viewModelScope.launch {
+            try {
+                val token = FirebaseMessaging.getInstance().token.await()
+                android.util.Log.d("FCM_TOKEN", "Token: $token")  // ← přidej
+                repository.saveFcmToken(userId, token)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 }
 
