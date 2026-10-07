@@ -14,7 +14,8 @@
  *  - importDotykackaCustomers (callable) → založí v appce účty stávajícím zákazníkům z Dotykačky
  *  - dotykackaStatus        (callable)  → diagnostika spojení z admin appky / při nastavování
  *  - walletPassJwt / syncWalletPass / walletAsset → kartička v Google Peněžence (wallet.js)
- *  - adminUpdateLoyalty / adminBroadcast → bonusy za rank, akce "více bodů", hromadné zprávy (loyalty.js)
+ *  - adminUpdateLoyalty / adminBroadcast → akce "více bodů", hromadné zprávy (loyalty.js)
+ *  - customerLogin / customerRegister / deleteMyAccount / webDeleteAccount → účty zákazníků (customers.js)
  *
  * Nastavení: viz DOTYKACKA_NAVOD.md v kořeni repa.
  */
@@ -697,3 +698,12 @@ exports.walletAsset = wallet.walletAsset;
 // ════════════════════════════════════════════════════════════════════
 exports.adminUpdateLoyalty = loyalty.adminUpdateLoyalty;
 exports.adminBroadcast = loyalty.adminBroadcast;
+
+// ════════════════════════════════════════════════════════════════════
+// 8) Účty zákazníků: přihlášení, registrace, smazání — viz customers.js
+// ════════════════════════════════════════════════════════════════════
+const customers = require("./customers");
+exports.customerLogin = customers.customerLogin;
+exports.customerRegister = customers.customerRegister;
+exports.deleteMyAccount = customers.deleteMyAccount;
+exports.webDeleteAccount = customers.webDeleteAccount;

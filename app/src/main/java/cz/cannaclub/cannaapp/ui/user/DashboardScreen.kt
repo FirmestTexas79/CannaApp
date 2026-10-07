@@ -120,6 +120,12 @@ fun DashboardScreen(
         onOnboardingFinished = { viewModel.onboardingFinished() },
         onOpenOnboarding     = { viewModel.openOnboarding() },
         onLogout             = onLogout,
+        onDeleteAccount      = { done ->
+            viewModel.deleteAccount { ok ->
+                done(ok)
+                if (ok) onLogout()
+            }
+        },
         onProductsClick      = onProductsClick,
         walletSaved          = walletSaved,
         walletBusy           = walletBusy,
@@ -144,6 +150,7 @@ fun DashboardContent(
     onOpenOnboarding: () -> Unit,
     onLogout: () -> Unit,
     onProductsClick: () -> Unit,
+    onDeleteAccount: (done: (Boolean) -> Unit) -> Unit = {},
     initialOverlay: DashboardOverlay = DashboardOverlay.NONE,
     walletSaved: Boolean = false,
     walletBusy: Boolean = false,
@@ -156,6 +163,8 @@ fun DashboardContent(
     var showProfile  by remember { mutableStateOf(initialOverlay == DashboardOverlay.PROFILE) }
     var showCard     by remember { mutableStateOf(initialOverlay == DashboardOverlay.CARD) }
     var confirmOut   by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var deleting     by remember { mutableStateOf(false) }
     val context      = LocalContext.current
 
     SystemBarsAppearance(lightBackground = true)
@@ -398,7 +407,8 @@ fun DashboardContent(
                         showProfile = false
                         onOpenOnboarding()
                     },
-                    onLogout     = { confirmOut = true }
+                    onLogout     = { confirmOut = true },
+                    onDelete     = { confirmDelete = true }
                 )
             }
         }
@@ -424,6 +434,36 @@ fun DashboardContent(
             },
             dismissButton    = {
                 TextButton(onClick = { confirmOut = false }) { Text("Zůstat", color = Sage) }
+            }
+        )
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { if (!deleting) confirmDelete = false },
+            containerColor   = PillBackground,
+            title            = { Text("Smazat účet natrvalo?", style = MaterialTheme.typography.headlineSmall, color = TextPrimary) },
+            text             = {
+                Text(
+                    "Smažou se tvoje body (${user?.points ?: 0} b), historie nákupů v appce i členská kartička. " +
+                        "Tohle nejde vrátit.",
+                    color = TextMuted
+                )
+            },
+            confirmButton    = {
+                TextButton(
+                    enabled = !deleting,
+                    onClick = {
+                        deleting = true
+                        onDeleteAccount { ok ->
+                            deleting = false
+                            if (ok) confirmDelete = false
+                        }
+                    }
+                ) { Text(if (deleting) "Mažu…" else "Smazat účet", color = PointsRed) }
+            },
+            dismissButton    = {
+                TextButton(enabled = !deleting, onClick = { confirmDelete = false }) { Text("Zpět", color = Sage) }
             }
         )
     }
@@ -629,7 +669,8 @@ private fun ProfileSheet(
     walletSaved: Boolean,
     onWallet: () -> Unit,
     onHowItWorks: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Column(
         modifier            = Modifier
@@ -697,6 +738,9 @@ private fun ProfileSheet(
             }
             ActionRow(R.drawable.ic_info, "Jak to funguje", TextPrimary, onHowItWorks)
             HorizontalDivider(color = BorderSoft)
+            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+            ActionRow(R.drawable.ic_user, "Ochrana osobních údajů", TextPrimary) { uriHandler.openUri(PRIVACY_URL) }
+            HorizontalDivider(color = BorderSoft)
             ActionRow(R.drawable.ic_logout, "Odhlásit se", PointsRed, onLogout)
         }
 
@@ -706,6 +750,16 @@ private fun ProfileSheet(
             style     = MaterialTheme.typography.bodySmall,
             color     = TextFaint,
             textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(18.dp))
+        Text(
+            text     = "Smazat účet",
+            style    = MaterialTheme.typography.bodySmall,
+            color    = PointsRed.copy(alpha = 0.8f),
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { onDelete() }
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         )
     }
 }

@@ -14,3 +14,19 @@
 .cxx
 local.properties
 functions/node_modules
+
+# Podpisove klice - NIKDY do gitu
+*.jks
+*.keystore
+keystore.properties
+tools/rules-test/node_modules
+
+web/node_modules
+
+# Sestavene balicky a lokalni data nastroju
+app/release/
+.firebase/
+.kotlin/
+.agents/
+skills-lock.json
+*.patch

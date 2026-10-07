@@ -1,0 +1,12 @@
+{
+  "name": "cannaclub-web",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs" },
+  "dependencies": {
+    "firebase": "^11.0.0",
+    "html5-qrcode": "^2.3.8",
+    "jsbarcode": "^3.11.6"
+  },
+  "devDependencies": { "esbuild": "^0.24.0" }
+}

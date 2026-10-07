@@ -66,6 +66,9 @@ import cz.cannaclub.cannaapp.viewmodel.UserViewModel
  * zákazníka sám najde / založí v Dotykačce a zapíše mu členský kód,
  * takže ho pokladna pozná skenem během pár desítek sekund.
  */
+/** Zásady ochrany osobních údajů (Firebase Hosting, složka hosting/ v repu). */
+const val PRIVACY_URL = "https://cannaapp-e4e8b.web.app/ochrana-udaju.html"
+
 @Composable
 fun RegisterScreen(
     viewModel: UserViewModel,
@@ -195,7 +198,18 @@ fun RegisterScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                Text(
+                    text     = "Zásady ochrany osobních údajů",
+                    style    = MaterialTheme.typography.bodySmall.copy(textDecoration = TextDecoration.Underline),
+                    color    = Sage,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { uriHandler.openUri(PRIVACY_URL) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Button(
                     onClick  = { submit() },

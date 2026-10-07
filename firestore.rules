@@ -1,0 +1,53 @@
+rules_version = '2';
+
+// Pravidla databáze CannaApp
+//  - zákazník (anonymní přihlášení přivázané serverem přes users/{id}.authUids)
+//    vidí jen svůj účet a své pohyby bodů; měnit smí jen svůj FCM token
+//  - obsluha (účet v kolekci admins) vidí a mění vše
+//  - body, registraci, smazání účtu a akce zapisuje server (Cloud Functions obchází pravidla)
+// Nasazení: firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function linkedTo(data) { return signedIn() && request.auth.uid in data.get('authUids', []); }
+
+    match /admins/{adminId} {
+      allow read: if signedIn() && request.auth.uid == adminId;
+      allow write: if false;   // obsluhu přidáváš ručně ve Firebase konzoli
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || linkedTo(resource.data);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (linkedTo(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmToken']));
+
+      match /transactions/{txId} {
+        allow read: if isAdmin()
+          || linkedTo(get(/databases/$(database)/documents/users/$(userId)).data);
+        allow write: if isAdmin();
+      }
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /meta/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Běžící akce (dvojité body) — čte appka, zapisuje jen server
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

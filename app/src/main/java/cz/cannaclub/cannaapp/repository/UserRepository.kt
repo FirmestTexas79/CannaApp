@@ -16,56 +16,52 @@ class UserRepository {
     private val usersCol = FirebaseManager.usersCollection
     private fun txCol(uid: String) = FirebaseManager.transactionsCollection(uid)
 
+    private val functions = com.google.firebase.functions.FirebaseFunctions.getInstance("us-central1")
+
     /**
-     * Přihlášení zákazníka: e-mail + telefon, nebo e-mail + jméno u zákazníků
-     * převzatých z Dotykačky, kteří tam telefon nemají (ten se pak doplní).
-     * Telefon se porovnává podle posledních 9 číslic (+420 / mezery nevadí),
-     * jméno bez diakritiky a v libovolném pořadí.
+     * Zákazník je v Firebase Auth přihlášený anonymně (neviditelné, bez hesla).
+     * Server ho podle e-mailu a telefonu přiváže k jeho účtu (users/{id}.authUids)
+     * a pravidla databáze ho pak pustí jen k vlastním datům.
      */
-    suspend fun loginUser(name: String, email: String, phone: String): User? {
-        return try {
-            val snapshot = usersCol
-                .whereEqualTo("email", email.trim().lowercase())
-                .limit(5)
-                .get()
-                .await()
-
-            if (snapshot.isEmpty) return null
-
-            val enteredPhone = phoneKey(phone)
-            val enteredName  = nameKey(name)
-
-            val users = snapshot.documents.mapNotNull { doc ->
-                doc.toObject(User::class.java)?.copy(id = doc.id)
-            }
-
-            users.firstOrNull { u ->
-                enteredPhone.isNotEmpty() && phoneKey(u.phone) == enteredPhone
-            } ?: users.firstOrNull { u ->
-                phoneKey(u.phone).isEmpty() && namesMatch(u.name, enteredName)
-            }?.also { u ->
-                if (enteredPhone.isNotEmpty()) {
-                    usersCol.document(u.id).update("phone", phone.trim()).await()
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
+    private suspend fun ensureSignedIn() {
+        if (auth.currentUser == null) auth.signInAnonymously().await()
     }
 
-    private fun phoneKey(p: String): String =
-        p.filter { it.isDigit() }.takeLast(9).let { if (it.length == 9) it else "" }
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun callForUserId(name: String, data: Map<String, Any?>): String? {
+        ensureSignedIn()
+        val res = functions.getHttpsCallable(name).call(data).await()
+        return (res.getData() as? Map<String, Any?>)?.get("userId") as? String
+    }
 
-    private fun nameKey(n: String): List<String> =
-        java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFD)
-            .replace(Regex("\\p{Mn}+"), "")
-            .lowercase()
-            .split(Regex("\\s+"))
-            .filter { it.isNotBlank() }
-            .sorted()
+    /**
+     * Přihlášení zákazníka: e-mail + telefon, nebo e-mail + jméno u zákazníků
+     * převzatých z Dotykačky bez telefonu. Ověřuje server (functions/customers.js).
+     */
+    suspend fun loginUser(name: String, email: String, phone: String): User? = try {
+        callForUserId(
+            "customerLogin",
+            mapOf("email" to email.trim().lowercase(), "phone" to phone.trim(), "name" to name.trim())
+        )?.let { getUserById(it) }
+    } catch (e: Exception) {
+        android.util.Log.w("Login", "Přihlášení zákazníka selhalo", e)
+        null
+    }
 
-    private fun namesMatch(stored: String, entered: List<String>): Boolean =
-        entered.isNotEmpty() && nameKey(stored) == entered
+    /** Smaže účet přihlášeného zákazníka i s historií bodů (požadavek Google Play). */
+    suspend fun deleteMyAccount(): Boolean = try {
+        functions.getHttpsCallable("deleteMyAccount").call().await()
+        auth.signOut()
+        true
+    } catch (e: Exception) {
+        android.util.Log.e("Account", "Smazání účtu selhalo", e)
+        false
+    }
+
+    /** Odhlášení zákazníka — zařízení se odpojí od účtu. Obsluhu (heslo) neodhlašuje. */
+    fun logoutCustomer() {
+        if (auth.currentUser?.isAnonymous == true) auth.signOut()
+    }
 
     suspend fun loginAdmin(email: String, password: String): Boolean {
         return try {
@@ -223,38 +219,24 @@ class UserRepository {
      * Samoregistrace zákazníka z appky. Členský kód a zákazníka v Dotykačce
      * doplní server (Cloud Function onUserCreated) hned po založení.
      */
-    suspend fun registerUser(name: String, email: String, phone: String): RegisterResult {
-        return try {
-            val normalizedEmail = email.trim().lowercase()
-            val existing = usersCol.whereEqualTo("email", normalizedEmail).limit(1).get().await()
-            if (!existing.isEmpty) return RegisterResult.DuplicateEmail
-
-            val ref = usersCol.document()
-            val data = mapOf(
-                "id"                 to "",
-                "name"               to name.trim().replace(Regex("\\s+"), " "),
-                "email"              to normalizedEmail,
-                "phone"              to phone.trim(),
-                "points"             to 0,
-                "totalPoints"        to 0,
-                "dotykackaId"        to "",
-                "fcmToken"           to "",
-                "memberCode"         to "",
-                "selfRegistered"     to true,
-                "consentAt"          to com.google.firebase.Timestamp.now(),
-                "createdAt"          to com.google.firebase.Timestamp.now()
+    suspend fun registerUser(name: String, email: String, phone: String): RegisterResult = try {
+        val id = callForUserId(
+            "customerRegister",
+            mapOf(
+                "name"    to name.trim(),
+                "email"   to email.trim().lowercase(),
+                "phone"   to phone.trim(),
+                "consent" to true      // zaškrtnutí kontroluje RegisterScreen / UserViewModel
             )
-            ref.set(data).await()
-            val user = User(
-                id    = ref.id,
-                name  = data["name"] as String,
-                email = normalizedEmail,
-                phone = phone.trim()
-            )
-            RegisterResult.Success(user)
-        } catch (e: Exception) {
-            RegisterResult.Error
-        }
+        )
+        val user = id?.let { getUserById(it) }
+        if (user != null) RegisterResult.Success(user) else RegisterResult.Error
+    } catch (e: com.google.firebase.functions.FirebaseFunctionsException) {
+        if (e.code == com.google.firebase.functions.FirebaseFunctionsException.Code.ALREADY_EXISTS)
+            RegisterResult.DuplicateEmail
+        else RegisterResult.Error
+    } catch (e: Exception) {
+        RegisterResult.Error
     }
 
     // Uloží FCM token do Firestore

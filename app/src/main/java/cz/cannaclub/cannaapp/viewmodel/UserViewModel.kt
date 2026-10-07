@@ -235,8 +235,24 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
         _transactions.value = emptyList()
         _celebration.value  = null
         _loginState.value   = LoginState.Idle
+        repository.logoutCustomer()
         // Údaje necháme předvyplněné, jen vypneme automatické přihlášení
         userPrefs.markLoggedOut()
+    }
+
+    /** Trvalé smazání účtu. [onResult] = true po úspěchu (pak přesměrovat na přihlášení). */
+    fun deleteAccount(onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = repository.deleteMyAccount()
+            if (ok) {
+                userPrefs.clearUser()
+                logout()
+                toast("Účet byl smazán")
+            } else {
+                toast("Účet se nepodařilo smazat, zkus to znovu")
+            }
+            onResult(ok)
+        }
     }
 
     fun resetLoginState() {
