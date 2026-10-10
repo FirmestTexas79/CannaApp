@@ -1,21 +1,20 @@
 package cz.cannaclub.cannaapp.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,19 +22,23 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,46 +49,48 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
 import cz.cannaclub.cannaapp.R
 import cz.cannaclub.cannaapp.model.Product
-import cz.cannaclub.cannaapp.ui.theme.AdminBackground
-import cz.cannaclub.cannaapp.ui.theme.BorderNormal
+import cz.cannaclub.cannaapp.ui.theme.BorderSoft
 import cz.cannaclub.cannaapp.ui.theme.CannaAppTheme
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
 import cz.cannaclub.cannaapp.ui.theme.CardHover
+import cz.cannaclub.cannaapp.ui.theme.Forest
 import cz.cannaclub.cannaapp.ui.theme.Gold
-import cz.cannaclub.cannaapp.ui.theme.LeafDecorAdmin
+import cz.cannaclub.cannaapp.ui.theme.OnBrand
+import cz.cannaclub.cannaapp.ui.theme.Paper
 import cz.cannaclub.cannaapp.ui.theme.PillBackground
 import cz.cannaclub.cannaapp.ui.theme.Sage
 import cz.cannaclub.cannaapp.ui.theme.SageGlow
-import cz.cannaclub.cannaapp.ui.theme.SageLight
+import cz.cannaclub.cannaapp.ui.theme.Surface
 import cz.cannaclub.cannaapp.ui.theme.TextFaint
 import cz.cannaclub.cannaapp.ui.theme.TextMuted
 import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 import cz.cannaclub.cannaapp.viewmodel.ProductOperationState
 import cz.cannaclub.cannaapp.viewmodel.ProductViewModel
 
-private val PillH = 28.dp
-private val PillV = 72.dp
-
 /**
- * Výstavka produktů — zákaznický i admin pohled v jedné obrazovce.
- *
- * [isAdmin] = true → zobrazit tlačítka přidat / upravit / smazat.
+ * Nabídka — zákaznický i admin pohled v jedné obrazovce.
+ * Hlavička + kategorie, první produkt kategorie velký, zbytek v mřížce 2×N.
+ * [isAdmin] = true → přidat / upravit.
  */
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductShowcaseScreen(
     viewModel: ProductViewModel,
@@ -96,16 +101,24 @@ fun ProductShowcaseScreen(
     val opState      by viewModel.opState.collectAsState()
     val snackbarHost = remember { SnackbarHostState() }
     val context      = LocalContext.current
+    val gridState    = rememberLazyGridState()
 
-    var detailProduct    by remember { mutableStateOf<Product?>(null) }
-    var editProduct      by remember { mutableStateOf<Product?>(null) }
-    var showAddDialog    by remember { mutableStateOf(false) }
-    var category         by remember { mutableStateOf(Product.CATEGORIES.first()) }
+    var detailProduct by remember { mutableStateOf<Product?>(null) }
+    var editProduct   by remember { mutableStateOf<Product?>(null) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var category      by remember { mutableStateOf(Product.CATEGORIES.first()) }
     val categories = remember(products) { Product.CATEGORIES.filter { c -> products.any { it.displayCategory == c } } }
     val current    = category.takeIf { it in categories } ?: categories.firstOrNull() ?: category
     val shown      = remember(products, current) { products.filter { it.displayCategory == current } }
 
-    // ── Snackbar pro operace ───────────────────────────────────────
+    // Fotky stáhnout dopředu do cache → při přepínání kategorií už jsou hned vidět
+    LaunchedEffect(products) {
+        products.filter { it.imageUrl.isNotEmpty() }.forEach {
+            context.imageLoader.enqueue(ImageRequest.Builder(context).data(it.imageUrl).size(600).build())
+        }
+    }
+    LaunchedEffect(current) { gridState.scrollToItem(0) }
+
     LaunchedEffect(opState) {
         when (val s = opState) {
             is ProductOperationState.Success -> { snackbarHost.showSnackbar(s.message); viewModel.resetOpState() }
@@ -114,179 +127,153 @@ fun ProductShowcaseScreen(
         }
     }
 
-    // ── Pozadí shodné s adminem nebo uživatelem ───────────────────
-    val bg = if (isAdmin) AdminBackground else cz.cannaclub.cannaapp.ui.theme.Background
-    SystemBarsAppearance(lightBackground = !isAdmin)
+    SystemBarsAppearance(lightBackground = true)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(bg)
+            .background(PillBackground)
     ) {
-        DecorativePlants(
-            modifier = Modifier.fillMaxSize(),
-            color    = if (isAdmin) LeafDecorAdmin else cz.cannaclub.cannaapp.ui.theme.LeafDecor
-        )
-
-        // ── Pill ──────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = PillH, vertical = PillV)
-                .clip(RoundedCornerShape(32.dp))
-                .background(PillBackground)
+        LazyVerticalGrid(
+            columns               = GridCells.Fixed(2),
+            state                 = gridState,
+            modifier              = Modifier.fillMaxSize().statusBarsPadding(),
+            contentPadding        = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 120.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement   = Arrangement.spacedBy(14.dp)
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 22.dp)
-            ) {
-                // ── Hlavička ──────────────────────────────────────
-                item {
-                    Spacer(modifier = Modifier.height(36.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text  = "CANNACLUB",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextMuted
-                            )
-                            Text(
-                                text  = "Naše zeleň",
-                                style = MaterialTheme.typography.headlineLarge,
-                                color = TextPrimary
-                            )
-                        }
-                        IconButton(onClick = onBack) {
-                            CannaIcon(id = cz.cannaclub.cannaapp.R.drawable.ic_close, tint = TextMuted, size = 22.dp)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text  = "${products.size} produktů v nabídce",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextFaint
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    // Kategorie (Konopí, CBD, Kosmetika…)
-                    androidx.compose.foundation.lazy.LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(categories.size) { i ->
-                            val c = categories[i]
-                            val on = c == current
-                            Text(
-                                text     = c,
-                                style    = MaterialTheme.typography.labelLarge,
-                                color    = if (on) PillBackground else TextMuted,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(if (on) TextPrimary else CardDefault)
-                                    .border(1.dp, if (on) TextPrimary else BorderNormal, RoundedCornerShape(20.dp))
-                                    .clickable { category = c }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(18.dp))
-                }
-
-                // ── Cikcak výstavka ───────────────────────────────
-                if (products.isEmpty()) {
-                    item {
+            // ── Hlavička ──────────────────────────────────────
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RoundButton(R.drawable.ic_chevron_left, "Zpět", onBack)
+                        Spacer(Modifier.weight(1f))
                         Text(
-                            text      = if (isAdmin) "Žádné produkty. Přidej první tlačítkem +" else "Brzy přidáme novinky",
-                            style     = MaterialTheme.typography.bodyMedium,
-                            color     = TextMuted,
-                            textAlign = TextAlign.Center,
-                            modifier  = Modifier.fillMaxWidth().padding(vertical = 48.dp)
+                            text     = "${products.size} produktů",
+                            style    = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                            color    = Sage,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(SageGlow)
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
-                } else {
-                    itemsIndexed(shown, key = { _, p -> p.id }) { index, product ->
-                        ProductCard(
-                            product      = product,
-                            context      = context,
-                            isAdmin      = isAdmin,
-                            imageOnRight = index % 2 != 0,
-                            modifier     = Modifier.fillMaxWidth(),
-                            onClick      = { detailProduct = product },
-                            onEditClick  = { editProduct = product }
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-                    }
-                }
-
-                item {
-                    Spacer(
-                        modifier = Modifier
-                            .height(90.dp)
-                            .navigationBarsPadding()
+                    Spacer(Modifier.height(22.dp))
+                    Text("CannaClub · Hradec Králové", style = MaterialTheme.typography.labelSmall, color = TextFaint)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text  = "Nabídka",
+                        style = MaterialTheme.typography.displayLarge.copy(fontSize = 44.sp, letterSpacing = (-0.5).sp),
+                        color = TextPrimary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text  = "Na prodejně ti s výběrem rádi poradíme.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMuted
                     )
                 }
             }
 
-            // ── Admin FAB přidat produkt ───────────────────────────
-            if (isAdmin) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 20.dp, bottom = 24.dp)
-                        .size(52.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Gold)
-                        .clickable { showAddDialog = true },
-                    contentAlignment = Alignment.Center
+            // ── Kategorie ─────────────────────────────────────
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier              = Modifier.fillMaxWidth()
                 ) {
-                    Text("+", fontSize = 26.sp, color = Color.White)
+                    items(categories) { c ->
+                        CategoryChip(
+                            label    = c,
+                            count    = products.count { it.displayCategory == c },
+                            selected = c == current,
+                            onClick  = { category = c }
+                        )
+                    }
+                }
+            }
+
+            if (products.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier            = Modifier.fillMaxWidth().padding(vertical = 56.dp)
+                    ) {
+                        IconBubble(R.drawable.ic_leaf, tint = Sage, background = SageGlow, size = 64.dp, iconSize = 28.dp)
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            text      = if (isAdmin) "Zatím žádné produkty.\nPřidej první tlačítkem +" else "Nabídku právě doplňujeme.",
+                            style     = MaterialTheme.typography.bodyMedium,
+                            color     = TextMuted,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                shown.firstOrNull()?.let { first ->
+                    item(key = first.id, span = { GridItemSpan(maxLineSpan) }) {
+                        FeaturedCard(first, isAdmin, onClick = { detailProduct = first }, onEdit = { editProduct = first })
+                    }
+                }
+                items(shown.drop(1), key = { it.id }) { p ->
+                    GridCard(p, isAdmin, onClick = { detailProduct = p }, onEdit = { editProduct = p })
                 }
             }
         }
 
-        // ── Snackbar ──────────────────────────────────────────────
+        // ── Admin: přidat produkt ─────────────────────────────
+        if (isAdmin) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 20.dp, bottom = 20.dp)
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Gold)
+                    .clickable { showAddDialog = true },
+                contentAlignment = Alignment.Center
+            ) {
+                CannaIcon(R.drawable.ic_plus, tint = Color.White, size = 24.dp, contentDescription = "Přidat produkt")
+            }
+        }
+
         SnackbarHost(
             hostState = snackbarHost,
-            modifier  = Modifier.align(Alignment.BottomCenter)
+            modifier  = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
         ) { data ->
             Snackbar(
                 snackbarData   = data,
-                containerColor = CardDefault,
-                contentColor   = TextPrimary,
-                shape          = RoundedCornerShape(12.dp),
-                modifier       = Modifier.padding(horizontal = PillH + 4.dp)
+                containerColor = TextPrimary,
+                contentColor   = PillBackground,
+                shape          = RoundedCornerShape(14.dp),
+                modifier       = Modifier.padding(horizontal = 18.dp)
             )
         }
     }
 
-    // ── Detail popup (zákazník i admin) ───────────────────────────
+    // ── Detail produktu ───────────────────────────────────────
     detailProduct?.let { product ->
-        CannaAppTheme {
-            ProductDetailDialog(
-                product   = product,
-                context   = context,
-                isAdmin   = isAdmin,
-                onDismiss = { detailProduct = null },
-                onEdit    = { editProduct = product; detailProduct = null }
+        ModalBottomSheet(
+            onDismissRequest = { detailProduct = null },
+            sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor   = Surface,
+            shape            = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        ) {
+            ProductDetail(
+                product = product,
+                isAdmin = isAdmin,
+                onEdit  = { editProduct = product; detailProduct = null }
             )
         }
     }
 
-    // ── DIALOG: PŘIDAT PRODUKT ──────────────────────────────────────────
     if (showAddDialog) {
         CannaAppTheme {
             AddEditProductDialog(
-                nextOrderIndex = (products.maxOfOrNull { it.orderIndex } ?: -1) + 1,
+                nextOrderIndex  = (products.maxOfOrNull { it.orderIndex } ?: -1) + 1,
                 defaultCategory = current,
-                onDismiss = { showAddDialog = false },
-                onSave = { productToSave, uriToSave ->
-                    // Předán context pro bezpečné zpracování Uri na pozadí
+                onDismiss       = { showAddDialog = false },
+                onSave          = { productToSave, uriToSave ->
                     viewModel.addProduct(context, productToSave, uriToSave)
                     showAddDialog = false
                 }
@@ -294,270 +281,280 @@ fun ProductShowcaseScreen(
         }
     }
 
-    // ── DIALOG: UPRAVIT PRODUKT ─────────────────────────────────────────
     editProduct?.let { product ->
         CannaAppTheme {
             AddEditProductDialog(
-                product = product,
+                product   = product,
                 onDismiss = { editProduct = null },
-                onSave = { productToSave, uriToSave ->
-                    // Předán context pro bezpečné zpracování Uri na pozadí
+                onSave    = { productToSave, uriToSave ->
                     viewModel.updateProduct(context, productToSave, uriToSave)
                     editProduct = null
                 },
-                onDelete = { id ->
-                    viewModel.deleteProduct(id)
-                }
+                onDelete  = { id -> viewModel.deleteProduct(id) }
             )
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Karta v cikcak výstavce — thumbnail + název (+ edit ikona)
+// Stavební kameny
 // ─────────────────────────────────────────────────────────────────
-@Composable
-private fun ProductCard(
-    product: Product,
-    context: android.content.Context,
-    isAdmin: Boolean,
-    imageOnRight: Boolean = false,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-    onEditClick: () -> Unit
-) {
-    val resId = remember(product.imageName) {
-        context.resources.getIdentifier(product.imageName, "drawable", context.packageName)
-    }
 
-    @Composable
-    fun ProductImage() {
-        Box(
-            modifier = Modifier.size(100.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(100.dp)
-                    .clip(CircleShape)
-                    .background(CardHover)
+@Composable
+private fun RoundButton(icon: Int, description: String, onClick: () -> Unit, tint: Color = TextPrimary, bg: Color = Paper) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(bg)
+            .border(1.dp, BorderSoft, CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        CannaIcon(icon, tint = tint, size = 20.dp, contentDescription = description)
+    }
+}
+
+@Composable
+private fun CategoryChip(label: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+    val bg by animateColorAsState(if (selected) Sage else Paper, label = "chipBg")
+    val fg by animateColorAsState(if (selected) OnBrand else TextPrimary, label = "chipFg")
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(bg)
+            .border(1.dp, if (selected) Sage else BorderSoft, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(start = 14.dp, end = 10.dp, top = 9.dp, bottom = 9.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = fg)
+        Spacer(Modifier.size(6.dp))
+        Text(
+            text     = "$count",
+            style    = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 11.sp),
+            color    = if (selected) OnBrand else TextMuted,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (selected) Color.White.copy(alpha = 0.16f) else CardDefault)
+                .padding(horizontal = 6.dp, vertical = 1.dp)
+        )
+    }
+}
+
+/** Fotka produktu: vlastní fotka (ořez), nebo průhledná sklenice z drawable (celá), nebo lísteček. */
+@Composable
+private fun ProductPhoto(product: Product, modifier: Modifier, jarPadding: PaddingValues = PaddingValues(14.dp)) {
+    val context = LocalContext.current
+    val resId = remember(product.imageName) {
+        if (product.imageName.isBlank()) 0
+        else context.resources.getIdentifier(product.imageName, "drawable", context.packageName)
+    }
+    Box(
+        modifier = modifier.background(
+            Brush.radialGradient(listOf(Paper, CardHover))
+        ),
+        contentAlignment = Alignment.Center
+    ) {
+        var failed by remember(product.imageUrl) { mutableStateOf(false) }
+        when {
+            resId != 0 -> androidx.compose.foundation.Image(
+                painter            = painterResource(resId),
+                contentDescription = product.name,
+                contentScale       = ContentScale.Fit,
+                modifier           = Modifier.fillMaxSize().padding(jarPadding)
             )
-            var loadFailed by remember(product.imageUrl) { mutableStateOf(false) }
-            if (product.imageUrl.isNotEmpty() && !loadFailed) {
-                // Vlastní fotky jsou obdélníkové → oříznout do kruhu, ať nejsou mrňavé.
-                AsyncImage(
-                    model              = ImageRequest.Builder(context)
-                        .data(product.imageUrl).crossfade(true).build(),
-                    contentDescription = product.name,
-                    modifier           = Modifier
-                        .size(if (resId != 0) 72.dp else 100.dp)
-                        .clip(CircleShape),
-                    contentScale       = if (resId != 0) ContentScale.Fit else ContentScale.Crop,
-                    placeholder        = if (resId != 0) painterResource(resId) else null,
-                    onError            = { state ->
-                        android.util.Log.e(
-                            "ProductImage",
-                            "Obrázek '${product.name}' se nenačetl: ${product.imageUrl}",
-                            state.result.throwable
-                        )
-                        if (resId == 0) loadFailed = true
-                    }
-                )
-            } else if (resId != 0) {
-                androidx.compose.foundation.Image(
-                    painter            = painterResource(id = resId),
-                    contentDescription = product.name,
-                    modifier           = Modifier.size(72.dp),
-                    contentScale       = ContentScale.Fit
-                )
-            } else {
-                CannaIcon(id = cz.cannaclub.cannaapp.R.drawable.ic_leaf, tint = Sage.copy(alpha = 0.5f), size = 36.dp)
-            }
+            product.imageUrl.isNotEmpty() && !failed -> AsyncImage(
+                model              = ImageRequest.Builder(context).data(product.imageUrl).size(600).crossfade(180).build(),
+                contentDescription = product.name,
+                contentScale       = ContentScale.Crop,
+                placeholder        = ColorPainter(CardHover),
+                onError            = { failed = true },
+                modifier           = Modifier.fillMaxSize()
+            )
+            else -> CannaIcon(R.drawable.ic_leaf, tint = Sage.copy(alpha = 0.45f), size = 36.dp)
         }
     }
+}
 
-    Row(
+/** Kartička se stiskem: lehce se zmenší pod prstem. */
+@Composable
+private fun PressCard(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Box(
         modifier = modifier
+            .scale(if (pressed) 0.98f else 1f)
             .clip(RoundedCornerShape(24.dp))
-            .background(CardDefault)
-            .border(1.dp, BorderNormal, RoundedCornerShape(24.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 20.dp, vertical = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        if (!imageOnRight) ProductImage()
+            .background(Paper)
+            .border(1.dp, BorderSoft, RoundedCornerShape(24.dp))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+    ) { content() }
+}
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text       = product.name,
-                style      = MaterialTheme.typography.titleLarge,
-                color      = TextPrimary
+@Composable
+private fun FormsLine(forms: List<String>, color: Color = Sage) {
+    if (forms.isEmpty()) return
+    Text(
+        text     = forms.joinToString("  ·  "),
+        style    = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+        color    = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+private fun EditBadge(onEdit: () -> Unit, modifier: Modifier) {
+    Box(
+        modifier = modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(Gold)
+            .clickable(onClick = onEdit),
+        contentAlignment = Alignment.Center
+    ) { CannaIcon(R.drawable.ic_edit, tint = Color.White, size = 16.dp, contentDescription = "Upravit") }
+}
+
+/** První produkt kategorie — velká fotka, název přes spodní přechod. */
+@Composable
+private fun FeaturedCard(product: Product, isAdmin: Boolean, onClick: () -> Unit, onEdit: () -> Unit) {
+    PressCard(onClick = onClick, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1.25f)) {
+            ProductPhoto(product, Modifier.fillMaxSize(), jarPadding = PaddingValues(start = 70.dp, end = 70.dp, top = 14.dp, bottom = 84.dp))
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Forest.copy(alpha = 0.92f)))
             )
-            if (product.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+            Column(
+                modifier = Modifier.align(Alignment.BottomStart).padding(20.dp)
+            ) {
                 Text(
-                    text     = product.description,
-                    style    = MaterialTheme.typography.bodySmall,
-                    color    = TextMuted,
+                    text  = product.displayCategory.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = OnBrand.copy(alpha = 0.75f)
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text     = product.name,
+                    style    = MaterialTheme.typography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 34.sp),
+                    color    = OnBrand,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (product.forms.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    FormsLine(product.forms, color = OnBrand)
+                }
             }
-            if (isAdmin) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text     = "Upravit",
-                    style    = MaterialTheme.typography.labelSmall,
-                    color = TextMuted,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(PillBackground)
-                        .clickable { onEditClick() }
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                )
-            }
+            if (isAdmin) EditBadge(onEdit, Modifier.align(Alignment.TopEnd).padding(12.dp))
         }
-
-        if (imageOnRight) ProductImage()
     }
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Detail popup — temně zatmavené pozadí, obdélníkový popup na výšku
-// ─────────────────────────────────────────────────────────────────
+@Composable
+private fun GridCard(product: Product, isAdmin: Boolean, onClick: () -> Unit, onEdit: () -> Unit) {
+    PressCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(6.dp)) {
+            Box {
+                ProductPhoto(
+                    product,
+                    Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp))
+                )
+                if (isAdmin) EditBadge(onEdit, Modifier.align(Alignment.TopEnd).padding(6.dp))
+            }
+            Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 10.dp, bottom = 8.dp)) {
+                Text(
+                    text     = product.name,
+                    style    = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold, lineHeight = 19.sp),
+                    color    = TextPrimary,
+                    maxLines = 2,
+                    minLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+                if (product.forms.isNotEmpty()) FormsLine(product.forms)
+                else Text("Detail", style = MaterialTheme.typography.bodySmall, color = TextFaint)
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ProductDetailDialog(
-    product: Product,
-    context: android.content.Context,
-    isAdmin: Boolean,
-    onDismiss: () -> Unit,
-    onEdit: () -> Unit
-) {
-    val resId = remember(product.imageName) {
-        context.resources.getIdentifier(product.imageName, "drawable", context.packageName)
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+private fun ProductDetail(product: Product, isAdmin: Boolean, onEdit: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 24.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 36.dp, vertical = 88.dp)
-                .clickable(onClick = onDismiss)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(PillBackground)
-                    .verticalScroll(rememberScrollState())
-                    .clickable(enabled = false) {}
-                    .padding(bottom = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(260.dp)
-                        .background(CardHover),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (product.imageUrl.isNotEmpty()) {
-                        AsyncImage(
-                            model              = ImageRequest.Builder(context)
-                                .data(product.imageUrl).crossfade(true).build(),
-                            contentDescription = product.name,
-                            modifier           = Modifier
-                                .fillMaxWidth()
-                                .height(240.dp),
-                            contentScale       = ContentScale.Fit,
-                            placeholder        = if (resId != 0) painterResource(resId) else null,
-                            error              = if (resId != 0) painterResource(resId) else null,
-                            onError            = { state ->
-                                android.util.Log.e(
-                                    "ProductImage",
-                                    "Detail '${product.name}' se nenačetl: ${product.imageUrl}",
-                                    state.result.throwable
-                                )
-                            }
-                        )
-                    } else if (resId != 0) {
-                        androidx.compose.foundation.Image(
-                            painter            = painterResource(id = resId),
-                            contentDescription = product.name,
-                            modifier           = Modifier
-                                .fillMaxWidth()
-                                .height(240.dp),
-                            contentScale       = ContentScale.Fit
-                        )
-                    } else {
-                        CannaIcon(id = cz.cannaclub.cannaapp.R.drawable.ic_leaf, tint = Sage.copy(alpha = 0.4f), size = 88.dp)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(22.dp))
-
-                Text(
-                    text       = product.name,
-                    style      = MaterialTheme.typography.headlineMedium,
-                    color      = TextPrimary,
-                    textAlign  = TextAlign.Center,
-                    modifier   = Modifier.padding(horizontal = 24.dp)
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (product.forms.isNotEmpty()) {
-                    FlowRow(
-                        modifier            = Modifier.padding(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalArrangement   = Arrangement.spacedBy(8.dp)
-                    ) {
-                        product.forms.forEach { form ->
-                            Text(
-                                text     = form,
-                                style    = MaterialTheme.typography.labelSmall,
-                                color    = SageLight,
-                                modifier = Modifier
-                                    .padding(horizontal = 4.dp)
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(SageGlow)
-                                    .border(1.dp, Sage.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
-                                    .padding(horizontal = 14.dp, vertical = 7.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-
-                if (product.description.isNotBlank()) {
+        ProductPhoto(
+            product,
+            Modifier.fillMaxWidth().aspectRatio(1.15f).clip(RoundedCornerShape(24.dp)),
+            jarPadding = PaddingValues(30.dp)
+        )
+        Spacer(Modifier.height(20.dp))
+        Text(product.displayCategory.uppercase(), style = MaterialTheme.typography.labelSmall, color = TextFaint)
+        Spacer(Modifier.height(4.dp))
+        Text(product.name, style = MaterialTheme.typography.headlineLarge, color = TextPrimary)
+        if (product.forms.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                product.forms.forEach { form ->
                     Text(
-                        text      = product.description,
-                        style     = MaterialTheme.typography.bodyMedium,
-                        color     = TextMuted,
-                        textAlign = TextAlign.Center,
-                        modifier  = Modifier.padding(horizontal = 24.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-
-                if (isAdmin) {
-                    Text(
-                        text     = "Upravit",
-                        style    = MaterialTheme.typography.labelSmall,
-                        color    = TextMuted,
+                        text     = form,
+                        style    = MaterialTheme.typography.labelLarge,
+                        color    = Sage,
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(CardDefault)
-                            .clickable { onEdit() }
-                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                            .background(SageGlow)
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
                     )
                 }
             }
+        }
+        if (product.description.isNotBlank()) {
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text  = product.description,
+                style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                color = TextMuted
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(CardDefault)
+                .padding(14.dp)
+        ) {
+            CannaIcon(R.drawable.ic_info, tint = TextMuted, size = 18.dp)
+            Spacer(Modifier.size(10.dp))
+            Text(
+                "K nákupu ukaž kartičku — body se ti připíšou samy.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
+        }
+        if (isAdmin) {
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text      = "Upravit produkt",
+                style     = MaterialTheme.typography.labelLarge,
+                color     = Color.White,
+                textAlign = TextAlign.Center,
+                modifier  = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Gold)
+                    .clickable(onClick = onEdit)
+                    .padding(vertical = 14.dp)
+            )
         }
     }
 }

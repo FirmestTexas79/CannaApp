@@ -157,7 +157,7 @@ function updateStats() {
   const fresh = A.users.filter((u) => toMillis(u.createdAt) >= weekAgo).length;
   el.innerHTML = [
     ["users", num(A.users.length), "zákazníků"],
-    ["tag", num(open), "bodů = Kč"],
+    ["tag", num(open), "bodů u lidí"],
     ["trend", `+${fresh}`, "za 7 dní"],
   ].map(([ic, v, l]) => `<div class="stat">${icon(ic)}<b>${v}</b><small>${l}</small></div>`).join("");
 }
@@ -414,7 +414,7 @@ function loyaltyHtml() {
     </section>
     <section class="panel">
       <h3>${icon("gift")} Odměny za body</h3>
-      <p class="muted">Co si zákazník může vzít za body. Sleva na cokoli (1 bod = 1 Kč) platí vždy, tyhle odměny jsou navíc.</p>
+      <p class="muted">Co si zákazník může vzít za body. Zákazníci to hned uvidí v appce.</p>
       <div id="rewards" class="reward-edit"></div>
       <button class="btn ghost small" data-act="addReward">${icon("plus")} Přidat odměnu</button>
       <button class="btn primary wide" data-act="saveRewards">Uložit odměny</button>
@@ -443,7 +443,7 @@ function renderRewards() {
     <input data-k="name" value="${esc(r.name)}" placeholder="Název odměny" maxlength="40">
     <input data-k="cost" type="number" inputmode="numeric" min="1" value="${Number(r.cost) || ""}" placeholder="bodů">
     <button class="icon-btn" data-act="delReward" data-i="${i}" aria-label="Odebrat">${icon("close")}</button></div>`).join("")
-    || `<p class="muted small">Žádné odměny – zákazníci uvidí jen slevu.</p>`;
+    || `<p class="muted small">Žádné odměny – přidej aspoň jednu.</p>`;
 }
 function readRewards() {
   document.querySelectorAll("#rewards .reward-row").forEach((row) => {

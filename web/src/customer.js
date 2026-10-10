@@ -8,7 +8,7 @@ import {
   RANKS, SHOP_ITEMS, WOLT_URL, PRIVACY_URL, EARN_KC_PER_POINT,
   esc, num, chunk4, initials, firstName, toMillis, dayLabel, timeLabel, czechUntil,
   rankFor, activePromo, errMsg, icon, toast, sheet, confirmDialog, bindActions, busy,
-  barcodeSvg, productsByCategory, installHint, dismissHint, keepAwake,
+  barcodeSvg, productsByCategory, productDetailHtml, prefetchProductImages, installHint, dismissHint, keepAwake,
 } from "./common.js";
 
 const { auth, db, call } = initFirebase("customer");
@@ -56,6 +56,7 @@ function listen(userId) {
   unsubs.push(onSnapshot(doc(db, "config", "rewards"), (snap) => { S.rewards = snap.data()?.items || null; }, () => {}));
   unsubs.push(onSnapshot(query(collection(db, "products"), orderBy("orderIndex")), (snap) => {
     S.products = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    prefetchProductImages(S.products);
     productsSheet?.update(productsHtml());
   }, () => {}));
 }
@@ -158,7 +159,7 @@ function homeHtml() {
       <div class="hero-top"><span class="eyebrow light">Věrnostní body</span>
         <span class="rank-chip"><i style="background:${rank.color}"></i>${esc(rank.label)}${rank.bonus ? ` · +${rank.bonus} %` : ""}</span></div>
       <div class="hero-points">${num(u.points)}<small>b</small></div>
-      <div class="hero-sub">= ${num(u.points)} Kč sleva na cokoli</div>
+      <div class="hero-sub">${esc(nextRewardText(u.points || 0))}</div>
       <div class="bar"><i style="width:${(rank.progress * 100).toFixed(1)}%"></i></div>
       <div class="hero-foot">
         <span>${rank.next ? `Do ranku ${esc(rank.next.label)} (+${rank.next.bonus} % bodů) chybí ${num(rank.missing)} b` : "Nejvyšší rank, patříš do rodiny"}</span>
@@ -191,35 +192,56 @@ function howHtml() {
   const steps = [
     ["barcode", "Ukaž kartičku", "U pokladny klepni na Ukázat kartičku, prodavač ji naskenuje."],
     ["bag", "Nakup jako obvykle", `Za každých ${EARN_KC_PER_POINT} Kč dostaneš 1 bod, připíšou se do pár minut.`],
-    ["gift", "Vyměň body", "Za odměnu, nebo za slevu na cokoli. 1 bod = 1 Kč."],
+    ["gift", "Vyměň body", "Za odměny z nabídky – papírky, zapalovač, kytky a další."],
   ];
   return `<div class="how">${steps.map(([ic, t, d], i) => `
     <div class="how-step"><span class="bubble">${icon(ic)}</span><div><b>${i + 1}. ${t}</b><p>${d}</p></div></div>`).join("")}</div>`;
 }
 
-function txBreakdown(t) {
-  if (!(t.promoBonus > 0) && !(t.rankBonus > 0)) return "";
-  const parts = [`${t.basePoints || 0} b`];
-  if (t.promoBonus > 0) parts.push(`${t.promoBonus} b ${t.promoLabel || "akce"}`);
-  if (t.rankBonus > 0) parts.push(`${t.rankBonus} b rank ${t.rankLabel || ""}`.trim());
-  return parts.join(" + ");
+const TX_PREVIEW = 8;
+const signed = (n) => (n >= 0 ? `+${num(n)}` : `−${num(-n)}`);
+const txValue = (t) => (t.type === "SUBTRACT" ? -1 : 1) * (Number(t.amount) || 0);
+
+function txSummary() {
+  const since = Date.now() - 30 * 864e5;
+  const recent = S.txs.filter((t) => toMillis(t.createdAt) >= since);
+  const gained = recent.filter((t) => t.type !== "SUBTRACT").reduce((a, t) => a + (t.amount || 0), 0);
+  const spent = recent.filter((t) => t.type === "SUBTRACT").reduce((a, t) => a + (t.amount || 0), 0);
+  const visits = recent.filter((t) => t.type !== "SUBTRACT" && (t.reason || "").startsWith("Nákup")).length;
+  return `<div class="tx-stats">
+      <div><b class="pos">+${num(gained)}</b><span>Získáno</span></div>
+      <div><b class="neg">${spent ? `−${num(spent)}` : "0"}</b><span>Uplatněno</span></div>
+      <div><b>${num(visits)}</b><span>Nákupů</span></div>
+    </div><p class="tx-note">za posledních 30 dní</p>`;
+}
+
+function txRow(t) {
+  const ms = toMillis(t.createdAt), pos = t.type !== "SUBTRACT";
+  const chips = [
+    t.promoBonus > 0 ? `<em class="bonus honey">+${num(t.promoBonus)} ${esc(t.promoLabel || "akce")}</em>` : "",
+    t.rankBonus > 0 ? `<em class="bonus">+${num(t.rankBonus)} rank ${esc(t.rankLabel || "")}</em>` : "",
+  ].join("");
+  return `<div class="tx">
+    <span class="bubble ${pos ? "" : "red"}">${icon(pos ? (t.reason || "").startsWith("Nákup") ? "bag" : "sparkle" : "gift")}</span>
+    <div class="tx-text"><b>${esc(t.reason || (pos ? "Připsáno" : "Uplatněno"))}</b>
+      <small>${timeLabel(ms)}${chips}</small></div>
+    <span class="tx-amt ${pos ? "pos" : "neg"}">${pos ? "+" : "−"}${num(t.amount)} b</span>
+  </div>`;
 }
 
 function txHtml() {
   if (!S.txs.length) return `<div class="empty">${icon("bag")}<p>Zatím tu nic není. Body se objeví po prvním nákupu.</p></div>`;
-  let lastDay = "";
-  return `<div class="tx-list">${S.txs.map((t) => {
-    const ms = toMillis(t.createdAt), day = dayLabel(ms), pos = t.type !== "SUBTRACT";
-    const head = day !== lastDay ? `<div class="tx-day">${esc(day)}</div>` : "";
-    lastDay = day;
-    const br = txBreakdown(t);
-    return `${head}<div class="tx">
-      <span class="bubble ${pos ? "" : "red"}">${icon(pos ? (t.reason || "").startsWith("Nákup") ? "bag" : "plus" : "gift")}</span>
-      <div class="tx-text"><b>${esc(t.reason || (pos ? "Připsáno" : "Uplatněno"))}</b>
-        <small>${timeLabel(ms)}${br ? ` · ${esc(br)}` : ""}</small></div>
-      <span class="tx-amt ${pos ? "pos" : "neg"}">${pos ? "+" : "−"}${num(t.amount)} b</span>
-    </div>`;
-  }).join("")}</div>`;
+  const shown = S.txAll ? S.txs : S.txs.slice(0, TX_PREVIEW);
+  const days = [];
+  for (const t of shown) {
+    const day = dayLabel(toMillis(t.createdAt));
+    if (days.at(-1)?.day !== day) days.push({ day, items: [] });
+    days.at(-1).items.push(t);
+  }
+  return `${txSummary()}<div class="tx-list">${days.map((d) => `
+    <div class="tx-day"><i></i>${esc(d.day)}<span>${signed(d.items.reduce((a, t) => a + txValue(t), 0))} b</span></div>
+    <div class="tx-group">${d.items.map(txRow).join("")}</div>`).join("")}</div>
+    ${!S.txAll && S.txs.length > TX_PREVIEW ? `<button class="more-btn" data-act="txAll">Zobrazit starší pohyby (${S.txs.length - TX_PREVIEW})</button>` : ""}`;
 }
 
 // ── Kartička přes celou obrazovku ──
@@ -245,19 +267,14 @@ function showRewards() {
   const u = S.user, pts = u.points || 0, rank = rankFor(u.totalPoints || 0);
   sheet(`
     <div class="sheet-head"><h2>Odměny</h2><span class="pill-badge">Máš ${num(pts)} b</span></div>
-    <div class="discount">
-      <span class="eyebrow light">${icon("tag")} Sleva na cokoli</span>
-      <div class="discount-val">${num(pts)} Kč</div>
-      <p>Body můžeš u pokladny kdykoli vyměnit za slevu na jakýkoli produkt. 1 bod = 1 Kč.</p>
-    </div>
-    <div class="eyebrow">Nebo si vyber odměnu</div>
+    <div class="eyebrow">Za body si můžeš vzít</div>
     <div class="list-card">${rewardItems().map((it) => {
       const ok = pts >= it.cost;
       return `<div class="row"><span class="bubble">${icon(it.icon)}</span>
         <div class="row-text"><b>${esc(it.name)}</b><small>${it.cost} b</small></div>
         <span class="badge ${ok ? "ok" : ""}">${ok ? `${icon("check")} Můžeš si vzít` : `chybí ${it.cost - pts} b`}</span></div>`;
     }).join("")}</div>
-    <p class="note">${icon("info")} Jak uplatnit: řekni si u pokladny o slevu nebo odměnu a ukaž kartičku. Obsluha ti body odečte.</p>
+    <p class="note">${icon("info")} Jak uplatnit: řekni si u pokladny o odměnu a ukaž kartičku. Obsluha ti body odečte.</p>
     <div class="eyebrow">Tvůj rank</div>
     <div class="rank-card">
       <span class="rank-dot big" style="background:${rank.color}">${icon("leaf")}</span>
@@ -277,12 +294,22 @@ function showRewards() {
 
 const rewardItems = () => [...(S.rewards?.length ? S.rewards : SHOP_ITEMS)].sort((a, b) => a.cost - b.cost);
 
+function nextRewardText(points) {
+  const list = rewardItems(), next = list.find((r) => r.cost > points), can = list.filter((r) => r.cost <= points).length;
+  if (!next) return can ? "Můžeš si vzít jakoukoli odměnu" : "Sbírej body za každý nákup";
+  if (can) return `Na ${can} ${can === 1 ? "odměnu" : can < 5 ? "odměny" : "odměn"} už máš · do další chybí ${next.cost - points} b`;
+  return `Do odměny „${next.name}“ chybí ${next.cost - points} b`;
+}
+
 // ── Nabídka ──
 function productsHtml() {
-  return `<div class="sheet-head"><div><div class="eyebrow">CannaClub</div><h2>Naše zeleň</h2>
-    <small class="muted">${S.products.length} produktů v nabídce</small></div>
-    <button class="icon-btn" data-close aria-label="Zavřít">${icon("close")}</button></div>
-    ${S.products.length ? productsByCategory(S.products, S.cat) : `<p class="muted">Nabídka se načítá…</p>`}`;
+  return `<div class="shop-head">
+      <button class="round-btn" data-close aria-label="Zpět">${icon("back")}</button>
+      ${S.products.length ? `<span class="count-pill">${S.products.length} produktů</span>` : ""}
+    </div>
+    <div class="shop-title"><span class="eyebrow">CannaClub · Hradec Králové</span><h1>Nabídka</h1>
+      <p>Na prodejně ti s výběrem rádi poradíme.</p></div>
+    ${S.products.length ? productsByCategory(S.products, S.cat) : `<div class="pgrid">${'<div class="pcard skel"></div>'.repeat(4)}</div>`}`;
 }
 
 // ── Profil ──
@@ -375,9 +402,11 @@ bindActions(document.body, {
   profile: showProfile,
   rewards: showRewards,
   card: showCard,
-  products: () => { productsSheet = sheet(productsHtml(), { onClose: () => { productsSheet = null; } }); },
+  products: () => { productsSheet = sheet(productsHtml(), { cls: "shop", onClose: () => { productsSheet = null; } }); },
+  product: (el) => { const p = S.products.find((x) => x.id === el.dataset.id); if (p) sheet(productDetailHtml(p)); },
   dismissHint,
-  cat: (el) => { S.cat = el.dataset.cat; productsSheet?.update(productsHtml()); },
+  txAll: () => { S.txAll = true; render(); },
+  cat: (el) => { S.cat = el.dataset.cat; productsSheet?.update(productsHtml()); productsSheet?.el.querySelector(".sheet").scrollTo({ top: 0 }); },
 });
 
 render();

@@ -171,7 +171,7 @@ fun AdminListScreen(
                     // Přehled
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatTile(R.drawable.ic_users, "${stats.customers}", "zákazníků", Modifier.weight(1f))
-                        StatTile(R.drawable.ic_tag, "${stats.pointsOpen}", "bodů = Kč", Modifier.weight(1f))
+                        StatTile(R.drawable.ic_tag, "${stats.pointsOpen}", "bodů u lidí", Modifier.weight(1f))
                         StatTile(R.drawable.ic_trend, "+${stats.newThisWeek}", "za 7 dní", Modifier.weight(1f))
                     }
                     Spacer(modifier = Modifier.height(8.dp))

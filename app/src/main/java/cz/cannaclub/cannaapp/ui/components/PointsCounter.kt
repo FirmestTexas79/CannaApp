@@ -117,7 +117,7 @@ fun PointsCard(
             }
 
             Text(
-                text  = "= ${points * POINT_VALUE_KC} Kč sleva na cokoli",
+                text  = cz.cannaclub.cannaapp.ui.user.nextRewardText(points, loyalty),
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                 color = OnBrand.copy(alpha = 0.9f)
             )

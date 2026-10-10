@@ -27,7 +27,7 @@ const WALLET_ISSUER_ID = defineString("WALLET_ISSUER_ID", { default: "" });
 const WALLET_API = "https://walletobjects.googleapis.com/walletobjects/v1";
 const CLASS_SUFFIX = "cannaclub_member";
 // Zvýšit, když se změní vzhled třídy (barva, obrázky, odkazy) → při dalším volání se přepíše
-const CLASS_VERSION = 1;
+const CLASS_VERSION = 2;
 
 const BRAND_GREEN = "#3E5E35";
 const WOLT_URL = "https://wolt.com/cs/cze/hradec-kralove/venue/cannaclub-cannabis-cbd";
@@ -153,10 +153,9 @@ function objectBody(issuer, user) {
     accountName: user.name || "Člen klubu",
     barcode: { type: "CODE_128", value: String(user.memberCode), alternateText: formatCode(user.memberCode) },
     loyaltyPoints: { label: "Body", balance: { int: points } },
-    secondaryLoyaltyPoints: { label: "Sleva", balance: { string: `${points} Kč` } },
     textModulesData: [
       { id: "rank", header: `Rank ${rank.label}`, body: rank.detail },
-      { id: "how", header: "Jak uplatnit", body: "Ukaž kartičku u pokladny. Body vyměníš za slevu (1 b = 1 Kč) nebo za odměnu." },
+      { id: "how", header: "Jak uplatnit", body: "Ukaž kartičku u pokladny. Body vyměníš za odměny z nabídky prodejny." },
     ],
   };
 }

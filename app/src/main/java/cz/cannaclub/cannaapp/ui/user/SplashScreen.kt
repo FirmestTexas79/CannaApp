@@ -99,4 +99,4 @@ fun SplashScreen(onFinished: () -> Unit) {
             contentScale       = ContentScale.Fit
         )
     }
-}
+}

@@ -35,7 +35,6 @@ import cz.cannaclub.cannaapp.model.LoyaltyConfig
 import cz.cannaclub.cannaapp.model.MemberRank
 import cz.cannaclub.cannaapp.ui.components.CannaIcon
 import cz.cannaclub.cannaapp.ui.components.IconBubble
-import cz.cannaclub.cannaapp.ui.components.POINT_VALUE_KC
 import cz.cannaclub.cannaapp.ui.components.RankBadge
 import cz.cannaclub.cannaapp.ui.components.SectionLabel
 import cz.cannaclub.cannaapp.ui.components.color
@@ -70,14 +69,32 @@ fun rewardIcon(key: String): Int = when (key) {
 
 // ── Výchozí ceník odměn (než ho obsluha upraví ve webovém adminu) ──
 val shopItems = listOf(
-    ShopItem(R.drawable.ic_preroll, "Prémiový preroll", 20),
-    ShopItem(R.drawable.ic_preroll, "3× preroll",       40),
-    ShopItem(R.drawable.ic_bud,     "3g kytky",         50),
-    ShopItem(R.drawable.ic_cube,    "4g hashe",        100),
+    ShopItem(R.drawable.ic_gift, "Papírky dle výběru", 50),
+    ShopItem(R.drawable.ic_gift, "Zapalovač", 80),
+    ShopItem(R.drawable.ic_cube, "Drtička Bulldog", 150),
 )
 
+/** Ceník odměn: z config/rewards, jinak výchozí; seřazený od nejlevnější. */
+fun rewardList(loyalty: LoyaltyConfig): List<ShopItem> = loyalty.rewards
+    .map { ShopItem(rewardIcon(it.icon), it.name, it.cost) }
+    .ifEmpty { shopItems }
+    .sortedBy { it.pointsCost }
+
+/** Text pod body: kolik chybí do nejbližší odměny. */
+fun nextRewardText(points: Int, loyalty: LoyaltyConfig): String {
+    val list = rewardList(loyalty)
+    val next = list.firstOrNull { it.pointsCost > points }
+    val canTake = list.count { it.pointsCost <= points }
+    return when {
+        next == null && canTake > 0 -> "Můžeš si vzít jakoukoli odměnu"
+        next == null -> "Sbírej body za každý nákup"
+        canTake > 0 -> "Na $canTake ${if (canTake == 1) "odměnu" else if (canTake < 5) "odměny" else "odměn"} už máš · do další chybí ${next.pointsCost - points} b"
+        else -> "Do odměny „${next.name}“ chybí ${next.pointsCost - points} b"
+    }
+}
+
 /**
- * Odměny: body jdou vyměnit za slevu na cokoli (1 b = 1 Kč), nebo za odměnu z ceníku.
+ * Odměny: body jdou vyměnit za odměny z ceníku (upravuje obsluha ve webovém adminu).
  * Pod tím rank a cesta ranků.
  */
 @Composable
@@ -117,39 +134,9 @@ fun RewardsSheet(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // ── 1. Sleva na cokoli ────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(Brush.linearGradient(listOf(Brand, Forest)))
-                .padding(20.dp)
-        ) {
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CannaIcon(id = R.drawable.ic_tag, tint = OnBrand, size = 20.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    SectionLabel("Sleva na cokoli", color = OnBrand.copy(alpha = 0.8f))
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text  = "${currentPoints * POINT_VALUE_KC} Kč",
-                    style = MaterialTheme.typography.displayLarge,
-                    color = OnBrand
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text  = "Body můžeš u pokladny kdykoli vyměnit za slevu na jakýkoli produkt. 1 bod = $POINT_VALUE_KC Kč.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnBrand.copy(alpha = 0.85f)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(26.dp))
 
         // ── 2. Nebo odměna z ceníku ───────────────────────
-        SectionLabel("Nebo si vyber odměnu")
+        SectionLabel("Za body si můžeš vzít")
         Spacer(modifier = Modifier.height(10.dp))
 
         Column(
@@ -159,11 +146,7 @@ fun RewardsSheet(
                 .background(Paper)
                 .border(1.dp, BorderSoft, RoundedCornerShape(20.dp))
         ) {
-            val items = loyalty.rewards
-                .map { ShopItem(rewardIcon(it.icon), it.name, it.cost) }
-                .ifEmpty { shopItems }
-                .sortedBy { it.pointsCost }
-            items.forEachIndexed { i, item ->
+            rewardList(loyalty).forEachIndexed { i, item ->
                 if (i > 0) HorizontalDivider(color = BorderSoft, modifier = Modifier.padding(start = 70.dp))
                 RewardRow(item = item, points = currentPoints)
             }
@@ -183,7 +166,7 @@ fun RewardsSheet(
             CannaIcon(id = R.drawable.ic_info, tint = TextMuted, size = 18.dp)
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text  = "Jak uplatnit: řekni si u pokladny o slevu nebo odměnu a ukaž kartičku. Obsluha ti body odečte.",
+                text  = "Jak uplatnit: řekni si u pokladny o odměnu a ukaž kartičku. Obsluha ti body odečte.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )

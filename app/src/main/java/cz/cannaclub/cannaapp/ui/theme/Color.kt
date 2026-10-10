@@ -52,4 +52,4 @@ val RankFamily      = Color(0xFF3E5E35)
 
 // ── Dekorativní prvky ─────────────────────────────────────────
 val LeafDecor       = Color(0xBB3E5E35)   // tmavě zelená — na světlém béžovém pozadí
-val LeafDecorAdmin  = Color(0x55F5EDD8)   // světlá krémová — na tmavém admin pozadí
+val LeafDecorAdmin  = Color(0x55F5EDD8)   // světlá krémová — na tmavém admin pozadí

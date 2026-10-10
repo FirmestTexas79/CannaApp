@@ -22,7 +22,7 @@
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onDocumentCreated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret, defineString, defineInt } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -228,16 +228,27 @@ async function codeTakenByOther(code, userId) {
   return snap.docs.some((d) => d.id !== userId);
 }
 
-/** Zapíše zákazníkovi v Dotykačce čárový kód (PATCH vyžaduje ETag). */
-async function setCustomerBarcode(customerId, barcode) {
+/** Změní pole zákazníka v Dotykačce (PATCH vyžaduje ETag). Vrací původní záznam. */
+async function patchCustomer(customerId, fields) {
   const { json: current, etag } = await api(`/customers/${customerId}`, { withEtag: true });
   if (!etag) throw new Error("Dotykačka nevrátila ETag zákazníka");
   await api(`/customers/${customerId}`, {
     method: "PATCH",
     headers: { "If-Match": etag },
-    body: { id: Number(customerId), _cloudId: Number(CLOUD_ID.value().trim()), barcode },
+    body: { id: Number(customerId), _cloudId: Number(CLOUD_ID.value().trim()), ...fields },
   });
+  return current;
+}
+
+/** Zapíše zákazníkovi v Dotykačce čárový kód. */
+async function setCustomerBarcode(customerId, barcode) {
+  const current = await patchCustomer(customerId, { barcode });
   logger.info("Nastaven čárový kód zákazníka", { customerId, barcode, previous: current && current.barcode });
+}
+
+/** Zrcadlí body z appky do Dotykačky (pole "Body" u zákazníka) — obsluha je vidí na pokladně. */
+async function setCustomerPoints(customerId, points) {
+  await patchCustomer(customerId, { points: Math.max(0, Number(points) || 0) });
 }
 
 async function getCustomerById(id) {
@@ -289,6 +300,10 @@ async function syncUser(userId) {
     dotykackaSyncError: FieldValue.delete(),
     dotykackaSyncFailures: FieldValue.delete(),
   });
+  if (Number(customer.points || 0) !== Number(user.points || 0)) {
+    await setCustomerPoints(customer.id, user.points).catch((e) =>
+      logger.warn("Body do Dotykačky nešly zapsat", { userId, error: e.message }));
+  }
   return String(customer.id);
 }
 
@@ -526,6 +541,7 @@ exports.syncDotykackaOrders = onSchedule(
     const since = startedAt.toMillis();
 
     await syncPendingCustomers(stateRef, state.get("customersBackfilled") === true);
+    if (state.get("pointsMirrored") !== true) await mirrorAllPoints(stateRef);
 
     // Projdeme účty za poslední 2 dny (po stránkách): zachytí to i výpadek synchronizace
     // a stornované účty, za které už body byly připsány.
@@ -556,6 +572,20 @@ exports.syncDotykackaOrders = onSchedule(
  * Zákazníci, kteří ještě nemají v Dotykačce členský kód.
  * Poprvé projde všechny existující uživatele, pak jen ty s dotykackaSynced == false.
  */
+/** Jednorázově: body všech propojených zákazníků do Dotykačky. */
+async function mirrorAllPoints(stateRef) {
+  const snap = await db.collection("users").where("dotykackaSynced", "==", true).get();
+  let ok = 0;
+  for (const d of snap.docs) {
+    const id = d.get("dotykackaId");
+    if (!id) continue;
+    try { await setCustomerPoints(id, d.get("points")); ok++; }
+    catch (e) { logger.warn("Body do Dotykačky nešly zapsat", { userId: d.id, error: e.message }); }
+  }
+  await stateRef.set({ pointsMirrored: true }, { merge: true });
+  logger.info(`Body zapsány do Dotykačky u ${ok} zákazníků.`);
+}
+
 async function syncPendingCustomers(stateRef, backfilled) {
   const LIMIT = 100;
   let ids;
@@ -699,6 +729,18 @@ exports.onUserCreated = onDocumentCreated(
     }
     if (event.data.get("dotykackaSynced") === true) return; // import se stávající kartou
     await syncUserSafe(userId);
+  }
+);
+
+// Změna bodů v appce → stejné body u zákazníka v Dotykačce (vidí je obsluha na pokladně)
+exports.mirrorPointsToDotykacka = onDocumentUpdated(
+  { document: "users/{userId}", secrets: [REFRESH_TOKEN] },
+  async (event) => {
+    const before = event.data.before, after = event.data.after;
+    const id = after.get("dotykackaId");
+    if (!id || before.get("points") === after.get("points") && before.get("dotykackaId") === id) return;
+    try { await setCustomerPoints(id, after.get("points")); }
+    catch (e) { logger.error("Body do Dotykačky nešly zapsat", { userId: event.params.userId, error: e.message }); }
   }
 );
 

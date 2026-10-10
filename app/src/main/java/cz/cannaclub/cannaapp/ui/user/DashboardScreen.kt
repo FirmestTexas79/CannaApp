@@ -165,6 +165,7 @@ fun DashboardContent(
     var confirmOut   by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var deleting     by remember { mutableStateOf(false) }
+    var historyExpanded by remember { mutableStateOf(false) }
     val context      = LocalContext.current
 
     SystemBarsAppearance(lightBackground = true)
@@ -311,39 +312,7 @@ fun DashboardContent(
                         HowItWorksCard()
                     }
                 } else {
-                    item {
-                        SectionLabel("Pohyby bodů")
-                        Spacer(modifier = Modifier.height(10.dp))
-                    }
-                    groupByDay(transactions).forEach { (label, dayTx) ->
-                        item(key = "h_$label") {
-                            Text(
-                                text     = label,
-                                style    = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                                color    = TextMuted,
-                                modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp)
-                            )
-                        }
-                        item(key = "d_$label") {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(Paper)
-                                    .border(1.dp, BorderSoft, RoundedCornerShape(20.dp))
-                            ) {
-                                dayTx.forEachIndexed { i, tx ->
-                                    if (i > 0) HorizontalDivider(
-                                        color     = BorderSoft,
-                                        thickness = 1.dp,
-                                        modifier  = Modifier.padding(start = 68.dp)
-                                    )
-                                    TransactionRow(tx)
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-                    }
+                    pointsHistory(transactions, historyExpanded) { historyExpanded = true }
                 }
             }
         }
@@ -589,7 +558,7 @@ private fun HowItWorksCard() {
     val steps = listOf(
         Triple(R.drawable.ic_barcode, "Ukaž kartičku", "U pokladny klepni na Ukázat kartičku, prodavač ji naskenuje."),
         Triple(R.drawable.ic_bag, "Nakup jako obvykle", "Za každých $EARN_KC_PER_POINT Kč dostaneš 1 bod, připíšou se do pár minut."),
-        Triple(R.drawable.ic_gift, "Vyměň body", "Za odměnu, nebo za slevu na cokoli. 1 bod = 1 Kč.")
+        Triple(R.drawable.ic_gift, "Vyměň body", "Za odměny z nabídky – papírky, zapalovač, kytky a další.")
     )
     Column(
         modifier = Modifier
@@ -618,46 +587,6 @@ private fun HowItWorksCard() {
                 }
             }
         }
-    }
-}
-
-@Composable
-fun TransactionRow(transaction: Transaction) {
-    val positive = transaction.isPositive
-    val color    = if (positive) PointsGreen else PointsRed
-    Row(
-        modifier          = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconBubble(
-            id         = transaction.iconRes,
-            tint       = color,
-            background = color.copy(alpha = 0.1f),
-            size       = 40.dp,
-            iconSize   = 19.dp
-        )
-        Spacer(modifier = Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text     = transaction.reason.ifBlank { if (positive) "Připsáno" else "Uplatněno" },
-                style    = MaterialTheme.typography.bodyLarge,
-                color    = TextPrimary,
-                maxLines = 1
-            )
-            Text(
-                text  = listOfNotNull(timeFmt.format(transaction.createdAt.toDate()), transaction.breakdown)
-                    .joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = TextFaint
-            )
-        }
-        Text(
-            text  = transaction.formattedAmount,
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = color
-        )
     }
 }
 
@@ -791,28 +720,4 @@ private fun ActionRow(icon: Int, label: String, color: Color, onClick: () -> Uni
         Text(text = label, style = MaterialTheme.typography.bodyLarge, color = color, modifier = Modifier.weight(1f))
         CannaIcon(id = R.drawable.ic_chevron_right, tint = TextFaint, size = 18.dp)
     }
-}
-
-// ── Datum ────────────────────────────────────────────────────────────────────
-
-private val czech   = Locale("cs", "CZ")
-private val timeFmt = SimpleDateFormat("HH:mm", czech)
-private val dayFmt  = SimpleDateFormat("EEEE d. MMMM", czech)
-private val yearFmt = SimpleDateFormat("d. MMMM yyyy", czech)
-
-/** Seskupí pohyby podle dne: "Dnes", "Včera", "pondělí 15. září"… (zachová pořadí). */
-private fun groupByDay(list: List<Transaction>): List<Pair<String, List<Transaction>>> {
-    val now = Calendar.getInstance()
-    fun label(tx: Transaction): String {
-        val d = Calendar.getInstance().apply { time = tx.createdAt.toDate() }
-        val sameYear = d.get(Calendar.YEAR) == now.get(Calendar.YEAR)
-        val diff = now.get(Calendar.DAY_OF_YEAR) - d.get(Calendar.DAY_OF_YEAR)
-        return when {
-            sameYear && diff == 0 -> "Dnes"
-            sameYear && diff == 1 -> "Včera"
-            sameYear              -> dayFmt.format(d.time).replaceFirstChar { it.uppercase() }
-            else                  -> yearFmt.format(d.time)
-        }
-    }
-    return list.groupBy(::label).toList()
 }

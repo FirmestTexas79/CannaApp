@@ -26,13 +26,15 @@ export function rankFor(total = 0) {
 export const CATEGORIES = ["Konopí", "CBD", "Kosmetika", "Kuřácké potřeby", "Pro mazlíčky", "Pití", "Doplňky"];
 export const categoryOf = (p) => (CATEGORIES.includes(p.category) ? p.category : CATEGORIES[0]);
 
-/** Chipy kategorií + produkty vybrané kategorie. */
+/** Chipy kategorií + první produkt velký + mřížka 2×N. */
 export function productsByCategory(products, current, { admin = false } = {}) {
   const cats = CATEGORIES.filter((c) => products.some((p) => categoryOf(p) === c));
   const cur = cats.includes(current) ? current : cats[0];
   const list = products.filter((p) => categoryOf(p) === cur);
-  return `<div class="chips cat-chips">${cats.map((c) => `<button class="chip ${c === cur ? "on" : ""}" data-act="cat" data-cat="${esc(c)}">${esc(c)}</button>`).join("")}</div>
-    <div class="products">${list.map((p) => productCard(p, { admin })).join("") || `<p class="muted center">Zatím tu nic není.</p>`}</div>`;
+  const count = (c) => products.filter((p) => categoryOf(p) === c).length;
+  return `<div class="cat-chips">${cats.map((c) => `<button class="cat-chip ${c === cur ? "on" : ""}" data-act="cat" data-cat="${esc(c)}">${esc(c)}<i>${count(c)}</i></button>`).join("")}</div>
+    ${list.length ? `<div class="pgrid">${list.map((p, i) => productCard(p, { admin, featured: i === 0 })).join("")}</div>`
+      : `<p class="muted center">Zatím tu nic není.</p>`}`;
 }
 
 // ── Ikony odměn (stejné klíče jako v Android appce) ──
@@ -40,10 +42,9 @@ export const REWARD_ICONS = ["preroll", "bud", "cube", "gift", "leaf", "bag"];
 
 // ── Výchozí ceník odměn, než ho obsluha upraví v adminu (config/rewards) ──
 export const SHOP_ITEMS = [
-  { icon: "preroll", name: "Prémiový preroll", cost: 20 },
-  { icon: "preroll", name: "3× preroll", cost: 40 },
-  { icon: "bud", name: "3g kytky", cost: 50 },
-  { icon: "cube", name: "4g hashe", cost: 100 },
+  { icon: "gift", name: "Papírky dle výběru", cost: 50 },
+  { icon: "gift", name: "Zapalovač", cost: 80 },
+  { icon: "cube", name: "Drtička Bulldog", cost: 150 },
 ];
 
 // ── Text a čísla ──
@@ -216,18 +217,47 @@ export async function busy(btn, fn, label = "Moment…") {
   try { return await fn(); } finally { if (btn.isConnected) { btn.disabled = false; btn.innerHTML = old; } }
 }
 
-// ── Seznam produktů "Naše zeleň" (zákazník i admin) ──
-export function productCard(p, { admin = false } = {}) {
+// ── Nabídka (zákazník i admin) ──
+function productPhoto(p, eager = false) {
   const img = productImg(p);
-  return `<article class="product${admin ? " tappable" : ""}" ${admin ? `data-act="editProduct" data-id="${esc(p.id)}"` : ""}>
-    <div class="product-img">${img ? `<img src="${esc(img)}" alt="" loading="lazy" class="${p.imageUrl ? "photo" : ""}">` : icon("leaf")}</div>
-    <div class="product-text">
-      <h4>${esc(p.name)}</h4>
-      <p>${esc(p.description)}</p>
-      ${(p.forms || []).length ? `<div class="chips small">${p.forms.map((f) => `<span class="chip">${esc(f)}</span>`).join("")}</div>` : ""}
-    </div>
-    ${admin ? `<span class="product-edit">${icon("edit")}</span>` : ""}
-  </article>`;
+  if (!img) return `<div class="pphoto">${icon("leaf")}</div>`;
+  return `<div class="pphoto ${p.imageUrl ? "photo" : "jar"}"><img src="${esc(img)}" alt="${esc(p.name)}" decoding="async"
+    ${eager ? 'fetchpriority="high"' : 'loading="lazy"'} onload="this.parentNode.classList.add('ok')" onerror="this.parentNode.classList.add('ok');this.style.display='none'"></div>`;
+}
+const formsLine = (p) => ((p.forms || []).length ? `<span class="pforms">${p.forms.map(esc).join(" · ")}</span>` : "");
+
+export function productCard(p, { admin = false, featured = false } = {}) {
+  const act = admin ? "editProduct" : "product";
+  return `<button class="pcard${featured ? " featured" : ""}" data-act="${act}" data-id="${esc(p.id)}">
+    ${productPhoto(p, featured)}
+    <span class="pinfo">
+      ${featured ? `<span class="pcat">${esc(categoryOf(p))}</span>` : ""}
+      <b>${esc(p.name)}</b>${formsLine(p)}
+    </span>
+    ${admin ? `<span class="pedit">${icon("edit")}</span>` : ""}
+  </button>`;
+}
+
+/** Detail produktu v panelu. */
+export function productDetailHtml(p) {
+  return `<div class="pdetail">
+    ${productPhoto(p, true)}
+    <span class="pcat">${esc(categoryOf(p))}</span>
+    <h2>${esc(p.name)}</h2>
+    ${(p.forms || []).length ? `<div class="pforms-big">${p.forms.map((f) => `<span>${esc(f)}</span>`).join("")}</div>` : ""}
+    ${p.description ? `<p class="pdesc">${esc(p.description)}</p>` : ""}
+    <div class="pnote">${icon("info")}<span>K nákupu ukaž kartičku — body se ti připíšou samy.</span></div>
+  </div>`;
+}
+
+/** Fotky stáhnout dopředu, ať jsou při přepnutí kategorie hned vidět. */
+const prefetched = new Set();
+export function prefetchProductImages(products) {
+  for (const p of products) {
+    if (!p.imageUrl || prefetched.has(p.imageUrl)) continue;
+    prefetched.add(p.imageUrl);
+    const i = new Image(); i.decoding = "async"; i.src = p.imageUrl;
+  }
 }
 
 export const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
