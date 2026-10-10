@@ -22,7 +22,23 @@ export function rankFor(total = 0) {
   return { ...r, index: i, next, progress, missing: next ? next.from - total : 0 };
 }
 
-// ── Odměny z ceníku (stejné jako RewardsSheet.kt) ──
+// ── Kategorie nabídky (pořadí v appce; stejné jako Product.CATEGORIES v Android appce) ──
+export const CATEGORIES = ["Konopí", "CBD", "Kosmetika", "Kuřácké potřeby", "Pro mazlíčky", "Pití", "Doplňky"];
+export const categoryOf = (p) => (CATEGORIES.includes(p.category) ? p.category : CATEGORIES[0]);
+
+/** Chipy kategorií + produkty vybrané kategorie. */
+export function productsByCategory(products, current, { admin = false } = {}) {
+  const cats = CATEGORIES.filter((c) => products.some((p) => categoryOf(p) === c));
+  const cur = cats.includes(current) ? current : cats[0];
+  const list = products.filter((p) => categoryOf(p) === cur);
+  return `<div class="chips cat-chips">${cats.map((c) => `<button class="chip ${c === cur ? "on" : ""}" data-act="cat" data-cat="${esc(c)}">${esc(c)}</button>`).join("")}</div>
+    <div class="products">${list.map((p) => productCard(p, { admin })).join("") || `<p class="muted center">Zatím tu nic není.</p>`}</div>`;
+}
+
+// ── Ikony odměn (stejné klíče jako v Android appce) ──
+export const REWARD_ICONS = ["preroll", "bud", "cube", "gift", "leaf", "bag"];
+
+// ── Výchozí ceník odměn, než ho obsluha upraví v adminu (config/rewards) ──
 export const SHOP_ITEMS = [
   { icon: "preroll", name: "Prémiový preroll", cost: 20 },
   { icon: "preroll", name: "3× preroll", cost: 40 },
@@ -204,7 +220,7 @@ export async function busy(btn, fn, label = "Moment…") {
 export function productCard(p, { admin = false } = {}) {
   const img = productImg(p);
   return `<article class="product${admin ? " tappable" : ""}" ${admin ? `data-act="editProduct" data-id="${esc(p.id)}"` : ""}>
-    <div class="product-img">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : icon("leaf")}</div>
+    <div class="product-img">${img ? `<img src="${esc(img)}" alt="" loading="lazy" class="${p.imageUrl ? "photo" : ""}">` : icon("leaf")}</div>
     <div class="product-text">
       <h4>${esc(p.name)}</h4>
       <p>${esc(p.description)}</p>

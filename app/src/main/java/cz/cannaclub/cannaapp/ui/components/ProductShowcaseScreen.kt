@@ -100,6 +100,10 @@ fun ProductShowcaseScreen(
     var detailProduct    by remember { mutableStateOf<Product?>(null) }
     var editProduct      by remember { mutableStateOf<Product?>(null) }
     var showAddDialog    by remember { mutableStateOf(false) }
+    var category         by remember { mutableStateOf(Product.CATEGORIES.first()) }
+    val categories = remember(products) { Product.CATEGORIES.filter { c -> products.any { it.displayCategory == c } } }
+    val current    = category.takeIf { it in categories } ?: categories.firstOrNull() ?: category
+    val shown      = remember(products, current) { products.filter { it.displayCategory == current } }
 
     // ── Snackbar pro operace ───────────────────────────────────────
     LaunchedEffect(opState) {
@@ -165,11 +169,33 @@ fun ProductShowcaseScreen(
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text  = "${products.size} odrůd v nabídce",
+                        text  = "${products.size} produktů v nabídce",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextFaint
                     )
-                    Spacer(modifier = Modifier.height(28.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    // Kategorie (Konopí, CBD, Kosmetika…)
+                    androidx.compose.foundation.lazy.LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(categories.size) { i ->
+                            val c = categories[i]
+                            val on = c == current
+                            Text(
+                                text     = c,
+                                style    = MaterialTheme.typography.labelLarge,
+                                color    = if (on) PillBackground else TextMuted,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(if (on) TextPrimary else CardDefault)
+                                    .border(1.dp, if (on) TextPrimary else BorderNormal, RoundedCornerShape(20.dp))
+                                    .clickable { category = c }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(18.dp))
                 }
 
                 // ── Cikcak výstavka ───────────────────────────────
@@ -184,7 +210,7 @@ fun ProductShowcaseScreen(
                         )
                     }
                 } else {
-                    itemsIndexed(products, key = { _, p -> p.id }) { index, product ->
+                    itemsIndexed(shown, key = { _, p -> p.id }) { index, product ->
                         ProductCard(
                             product      = product,
                             context      = context,
@@ -256,7 +282,8 @@ fun ProductShowcaseScreen(
     if (showAddDialog) {
         CannaAppTheme {
             AddEditProductDialog(
-                nextOrderIndex = products.size,
+                nextOrderIndex = (products.maxOfOrNull { it.orderIndex } ?: -1) + 1,
+                defaultCategory = current,
                 onDismiss = { showAddDialog = false },
                 onSave = { productToSave, uriToSave ->
                     // Předán context pro bezpečné zpracování Uri na pozadí
@@ -533,4 +560,4 @@ private fun ProductDetailDialog(
             }
         }
     }
-}
+}

@@ -69,6 +69,7 @@ private val ALL_FORMS = listOf("1g", "3g", "volně", "5g", "drť", "preroll")
 fun AddEditProductDialog(
     product: Product? = null,
     nextOrderIndex: Int = 0,
+    defaultCategory: String = Product.CATEGORIES.first(),
     onDismiss: () -> Unit,
     onSave: (Product, Uri?) -> Unit,
     onDelete: ((String) -> Unit)? = null
@@ -78,8 +79,9 @@ fun AddEditProductDialog(
 
     var name        by remember { mutableStateOf(product?.name        ?: "") }
     var description by remember { mutableStateOf(product?.description ?: "") }
+    var category    by remember { mutableStateOf(product?.displayCategory ?: defaultCategory) }
     val forms = remember {
-        mutableStateListOf<String>().apply { addAll(product?.forms ?: listOf("1g", "3g", "volně")) }
+        mutableStateListOf<String>().apply { addAll(product?.forms ?: emptyList()) }
     }
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -196,7 +198,7 @@ fun AddEditProductDialog(
             ProductField(
                 value = name,
                 onValueChange = { name = it },
-                label = "Název odrůdy"
+                label = "Název"
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -204,13 +206,36 @@ fun AddEditProductDialog(
             ProductField(
                 value = description,
                 onValueChange = { description = it },
-                label = "Popis odrůdy",
+                label = "Popis",
                 singleLine = false,
                 minLines = 3
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            Text(
+                text  = "KATEGORIE",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Product.CATEGORIES.forEach { c ->
+                    val selected = c == category
+                    Text(
+                        text = c,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (selected) Sage else TextMuted,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (selected) SageGlow else CardDefault)
+                            .border(1.dp, if (selected) Sage.copy(alpha = 0.4f) else BorderNormal, RoundedCornerShape(20.dp))
+                            .clickable { category = c }
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text  = "DOSTUPNÉ FORMY",
                 style = MaterialTheme.typography.labelSmall,
@@ -274,7 +299,8 @@ fun AddEditProductDialog(
                             imageUrl    = product?.imageUrl ?: "", // Pokud je prázdná, ViewModel s ní musí umět pracovat
                             forms       = forms.toList(),
                             description = description.trim(),
-                            orderIndex  = product?.orderIndex ?: nextOrderIndex
+                            orderIndex  = product?.orderIndex ?: nextOrderIndex,
+                            category    = category
                         )
                         onSave(saving, selectedImageUri)
                     },
@@ -364,4 +390,4 @@ private fun ProductField(
             )
         )
     }
-}
+}

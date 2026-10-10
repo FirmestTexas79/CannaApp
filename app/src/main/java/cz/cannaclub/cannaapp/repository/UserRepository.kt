@@ -58,9 +58,14 @@ class UserRepository {
         false
     }
 
-    /** Odhlášení zákazníka — zařízení se odpojí od účtu. Obsluhu (heslo) neodhlašuje. */
-    fun logoutCustomer() {
-        if (auth.currentUser?.isAnonymous == true) auth.signOut()
+    /**
+     * Odhlášení zákazníka — zařízení se odpojí od účtu. Obsluhu (heslo) neodhlašuje.
+     * Nejdřív smaže FCM token, ať na sdíleném telefonu nechodí notifikace cizího účtu.
+     */
+    suspend fun logoutCustomer(userId: String?) {
+        if (auth.currentUser?.isAnonymous != true) return
+        if (userId != null) runCatching { usersCol.document(userId).update("fcmToken", "").await() }
+        auth.signOut()
     }
 
     suspend fun loginAdmin(email: String, password: String): Boolean {
@@ -165,7 +170,12 @@ class UserRepository {
                     userRef,
                     mapOf(
                         "points"      to updated,
-                        "totalPoints" to if (applied > 0) total + applied else total
+                        // Oprava chyby vrací i celkové body (rank); jinak se nesnižují
+                        "totalPoints" to when {
+                            applied > 0 -> total + applied
+                            reason == "Oprava chyby" -> (total + applied).coerceAtLeast(0)
+                            else -> total
+                        }
                     )
                 )
                 val txRef = txCol(userId).document()

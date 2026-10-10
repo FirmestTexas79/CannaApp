@@ -226,6 +226,7 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
+        val userId = _currentUser.value?.id
         userJob?.cancel()
         userJob = null
         transactionJob?.cancel()
@@ -235,7 +236,7 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
         _transactions.value = emptyList()
         _celebration.value  = null
         _loginState.value   = LoginState.Idle
-        repository.logoutCustomer()
+        viewModelScope.launch { repository.logoutCustomer(userId) }
         // Údaje necháme předvyplněné, jen vypneme automatické přihlášení
         userPrefs.markLoggedOut()
     }

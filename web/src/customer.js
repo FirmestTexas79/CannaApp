@@ -8,7 +8,7 @@ import {
   RANKS, SHOP_ITEMS, WOLT_URL, PRIVACY_URL, EARN_KC_PER_POINT,
   esc, num, chunk4, initials, firstName, toMillis, dayLabel, timeLabel, czechUntil,
   rankFor, activePromo, errMsg, icon, toast, sheet, confirmDialog, bindActions, busy,
-  barcodeSvg, productCard, installHint, dismissHint, keepAwake,
+  barcodeSvg, productsByCategory, installHint, dismissHint, keepAwake,
 } from "./common.js";
 
 const { auth, db, call } = initFirebase("customer");
@@ -22,6 +22,8 @@ const S = {
   txs: [],
   config: null,
   products: [],
+  rewards: null,            // ceník odměn z config/rewards (null = výchozí)
+  cat: null,                // vybraná kategorie v nabídce
   draft: {},                // rozepsaný formulář při přepínání login/registrace
 };
 let unsubs = [];
@@ -51,6 +53,7 @@ function listen(userId) {
     () => {}
   ));
   unsubs.push(onSnapshot(doc(db, "config", "loyalty"), (snap) => { S.config = snap.data() || null; render(); }, () => {}));
+  unsubs.push(onSnapshot(doc(db, "config", "rewards"), (snap) => { S.rewards = snap.data()?.items || null; }, () => {}));
   unsubs.push(onSnapshot(query(collection(db, "products"), orderBy("orderIndex")), (snap) => {
     S.products = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     productsSheet?.update(productsHtml());
@@ -248,7 +251,7 @@ function showRewards() {
       <p>Body můžeš u pokladny kdykoli vyměnit za slevu na jakýkoli produkt. 1 bod = 1 Kč.</p>
     </div>
     <div class="eyebrow">Nebo si vyber odměnu</div>
-    <div class="list-card">${SHOP_ITEMS.map((it) => {
+    <div class="list-card">${rewardItems().map((it) => {
       const ok = pts >= it.cost;
       return `<div class="row"><span class="bubble">${icon(it.icon)}</span>
         <div class="row-text"><b>${esc(it.name)}</b><small>${it.cost} b</small></div>
@@ -272,12 +275,14 @@ function showRewards() {
   `);
 }
 
+const rewardItems = () => [...(S.rewards?.length ? S.rewards : SHOP_ITEMS)].sort((a, b) => a.cost - b.cost);
+
 // ── Nabídka ──
 function productsHtml() {
   return `<div class="sheet-head"><div><div class="eyebrow">CannaClub</div><h2>Naše zeleň</h2>
-    <small class="muted">${S.products.length} odrůd v nabídce</small></div>
+    <small class="muted">${S.products.length} produktů v nabídce</small></div>
     <button class="icon-btn" data-close aria-label="Zavřít">${icon("close")}</button></div>
-    <div class="products">${S.products.map((p) => productCard(p)).join("") || `<p class="muted">Nabídka se načítá…</p>`}</div>`;
+    ${S.products.length ? productsByCategory(S.products, S.cat) : `<p class="muted">Nabídka se načítá…</p>`}`;
 }
 
 // ── Profil ──
@@ -372,6 +377,7 @@ bindActions(document.body, {
   card: showCard,
   products: () => { productsSheet = sheet(productsHtml(), { onClose: () => { productsSheet = null; } }); },
   dismissHint,
+  cat: (el) => { S.cat = el.dataset.cat; productsSheet?.update(productsHtml()); },
 });
 
 render();

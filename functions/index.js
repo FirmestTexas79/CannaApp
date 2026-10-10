@@ -22,7 +22,7 @@
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret, defineString, defineInt } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
@@ -287,6 +287,7 @@ async function syncUser(userId) {
     memberCode: code,
     dotykackaSynced: true,
     dotykackaSyncError: FieldValue.delete(),
+    dotykackaSyncFailures: FieldValue.delete(),
   });
   return String(customer.id);
 }
@@ -297,9 +298,14 @@ async function syncUserSafe(userId) {
     return true;
   } catch (e) {
     logger.error("Synchronizace zákazníka s Dotykačkou selhala", { userId, error: e.message });
-    await db.collection("users").doc(userId)
-      .update({ dotykackaSynced: false, dotykackaSyncError: String(e.message).slice(0, 300) })
-      .catch(() => {});
+    // Po 3 neúspěšných pokusech to vzdát (jinak by se zkoušelo každých 5 minut navždy)
+    const ref = db.collection("users").doc(userId);
+    const fails = Number((await ref.get().catch(() => null))?.get("dotykackaSyncFailures") || 0) + 1;
+    await ref.update({
+      dotykackaSynced: fails >= 3 ? "error" : false,
+      dotykackaSyncFailures: fails,
+      dotykackaSyncError: String(e.message).slice(0, 300),
+    }).catch(() => {});
     return false;
   }
 }
@@ -521,21 +527,19 @@ exports.syncDotykackaOrders = onSchedule(
 
     await syncPendingCustomers(stateRef, state.get("customersBackfilled") === true);
 
-    const filter = encodeURIComponent(
-      `_branchId|eq|${BRANCH_ID.value().trim()};_customerId|eq|notnull;paid|eq|true`
-    );
-    const json = await api(`/orders?filter=${filter}&sort=-created&limit=100`, { allow404: true });
-    const orders = listData(json);
+    // Projdeme účty za poslední 2 dny (po stránkách): zachytí to i výpadek synchronizace
+    // a stornované účty, za které už body byly připsány.
+    const windowStart = Math.max(since, Date.now() - SCAN_WINDOW_MS);
+    const orders = await fetchRecentOrders(windowStart);
 
-    let awarded = 0;
+    let awarded = 0, reversed = 0;
     for (const order of orders) {
-      if (toMillis(order.created) < since) continue;
       const flags = Number(order.flags || 0);
       const canceled = order.canceledDate || (flags & 0b110) !== 0; // CANCELED_FULL | CANCELLATION
       const total = Number(order.totalValueRounded || 0);
-      if (canceled || total <= 0) continue;
-
       try {
+        if (canceled) { if (await reverseOrder(order)) reversed++; continue; }
+        if (total <= 0) continue;
         if (await awardOrder(order, total)) awarded++;
       } catch (e) {
         logger.error("Chyba při připisování bodů", { orderId: order.id, error: e.message });
@@ -544,6 +548,7 @@ exports.syncDotykackaOrders = onSchedule(
 
     await stateRef.set({ lastSyncAt: Timestamp.now(), lastSyncAwarded: awarded }, { merge: true });
     if (awarded) logger.info(`Připsány body za ${awarded} účtů.`);
+    if (reversed) logger.info(`Storno: odečteny body za ${reversed} účtů.`);
   }
 );
 
@@ -556,7 +561,7 @@ async function syncPendingCustomers(stateRef, backfilled) {
   let ids;
   if (!backfilled) {
     const all = await db.collection("users").get();
-    ids = all.docs.filter((d) => d.get("dotykackaSynced") !== true).map((d) => d.id);
+    ids = all.docs.filter((d) => ![true, "error"].includes(d.get("dotykackaSynced"))).map((d) => d.id);
   } else {
     const pending = await db.collection("users").where("dotykackaSynced", "==", false).limit(LIMIT).get();
     ids = pending.docs.map((d) => d.id);
@@ -570,6 +575,53 @@ async function syncPendingCustomers(stateRef, backfilled) {
     await stateRef.set({ customersBackfilled: true }, { merge: true });
   }
   if (ids.length) logger.info(`Zákazníci s Dotykačkou: ${ok}/${Math.min(ids.length, LIMIT)} synchronizováno.`);
+}
+
+const SCAN_WINDOW_MS = 2 * 86_400_000;     // jak daleko zpět kontrolovat účty a storna
+const NO_USER_GRACE_MS = 86_400_000;       // jak dlouho čekat na propojení zákazníka
+const ORDER_PAGES_MAX = 20;
+
+/** Zaplacené účty se zákazníkem vytvořené od `fromMillis`, všechny stránky. */
+async function fetchRecentOrders(fromMillis) {
+  const filter = encodeURIComponent(
+    `_branchId|eq|${BRANCH_ID.value().trim()};_customerId|eq|notnull;paid|eq|true`
+  );
+  const out = [];
+  for (let page = 1; page <= ORDER_PAGES_MAX; page++) {
+    const list = listData(await api(`/orders?filter=${filter}&sort=-created&limit=100&page=${page}`, { allow404: true }));
+    for (const o of list) if (toMillis(o.created) >= fromMillis) out.push(o);
+    if (list.length < 100 || toMillis(list[list.length - 1].created) < fromMillis) break;
+  }
+  return out;
+}
+
+/** Stornovaný účet, za který už byly připsány body → body odečíst (jen jednou). */
+async function reverseOrder(order) {
+  const orderRef = db.collection("dotykacka_orders").doc(String(order.id));
+  return db.runTransaction(async (tx) => {
+    const rec = await tx.get(orderRef);
+    if (!rec.exists) {
+      // Storno dřív, než se body připsaly → už nikdy nepřipisovat
+      tx.set(orderRef, { status: "canceled", points: 0, processedAt: FieldValue.serverTimestamp() });
+      return false;
+    }
+    if (rec.get("status") !== "awarded" || !rec.get("userId")) return false;
+    const userRef = db.collection("users").doc(rec.get("userId"));
+    const user = await tx.get(userRef);
+    const pts = Number(rec.get("points") || 0);
+    tx.update(orderRef, { status: "reversed", reversedAt: FieldValue.serverTimestamp() });
+    if (!user.exists || pts <= 0) return true;
+    const cur = Number(user.get("points") || 0), total = Number(user.get("totalPoints") || 0);
+    const take = Math.min(cur, pts);
+    tx.update(userRef, { points: cur - take, totalPoints: Math.max(0, total - pts) });
+    const txRef = userRef.collection("transactions").doc();
+    tx.set(txRef, {
+      id: txRef.id, type: "SUBTRACT", amount: take,
+      reason: `Storno nákupu ${Math.round(Number(rec.get("total") || 0))} Kč`,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return true;
+  });
 }
 
 async function awardOrder(order, total) {
@@ -590,8 +642,11 @@ async function awardOrder(order, total) {
     };
 
     if (users.empty) {
-      // Zákazník z Dotykačky, který nemá účet v appce — jen si poznamenáme
-      tx.set(orderRef, { ...base, status: "no_app_user", points: 0 });
+      // Zákazník z Dotykačky bez účtu v appce. Den ještě čekáme — účet se mohl
+      // právě založit a propojit; pak si to jen poznamenáme.
+      if (Date.now() - toMillis(order.created) > NO_USER_GRACE_MS) {
+        tx.set(orderRef, { ...base, status: "no_app_user", points: 0 });
+      }
       return false;
     }
 
@@ -644,6 +699,18 @@ exports.onUserCreated = onDocumentCreated(
     }
     if (event.data.get("dotykackaSynced") === true) return; // import se stávající kartou
     await syncUserSafe(userId);
+  }
+);
+
+// Smazaný účet v appce → v Dotykačce odebrat členský kód (záznam zákazníka
+// zůstává kvůli účetním dokladům prodejny)
+exports.onUserDeleted = onDocumentDeleted(
+  { document: "users/{userId}", secrets: [REFRESH_TOKEN] },
+  async (event) => {
+    const dotykackaId = event.data && event.data.get("dotykackaId");
+    if (!dotykackaId) return;
+    try { await setCustomerBarcode(dotykackaId, ""); }
+    catch (e) { logger.error("Nepodařilo se odebrat čárový kód v Dotykačce", { dotykackaId, error: e.message }); }
   }
 );
 
@@ -707,3 +774,4 @@ exports.customerLogin = customers.customerLogin;
 exports.customerRegister = customers.customerRegister;
 exports.deleteMyAccount = customers.deleteMyAccount;
 exports.webDeleteAccount = customers.webDeleteAccount;
+exports.adminDeleteCustomer = customers.adminDeleteCustomer;

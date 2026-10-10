@@ -18,17 +18,28 @@ class LoyaltyRepository(
     private val functions: FirebaseFunctions = FirebaseFunctions.getInstance("us-central1")
 ) {
 
+    /** Akce (config/loyalty) + ceník odměn (config/rewards) v jednom objektu. */
     fun configFlow(): Flow<LoyaltyConfig> = callbackFlow {
+        var cfg = LoyaltyConfig()
+        var rewards = emptyList<cz.cannaclub.cannaapp.model.Reward>()
+        fun emit() { trySend(cfg.copy(rewards = rewards)) }
         val reg = db.collection("config").document("loyalty")
             .addSnapshotListener { snap, error ->
-                if (error != null) {
-                    android.util.Log.w("Loyalty", "config/loyalty nejde číst", error)
-                    trySend(LoyaltyConfig())
-                    return@addSnapshotListener
-                }
-                trySend(LoyaltyConfig.from(snap?.data))
+                if (error != null) android.util.Log.w("Loyalty", "config/loyalty nejde číst", error)
+                cfg = if (error != null) LoyaltyConfig() else LoyaltyConfig.from(snap?.data)
+                emit()
             }
-        awaitClose { reg.remove() }
+        val regRewards = db.collection("config").document("rewards")
+            .addSnapshotListener { snap, _ ->
+                @Suppress("UNCHECKED_CAST")
+                rewards = (snap?.get("items") as? List<Map<String, Any?>>).orEmpty().mapNotNull { m ->
+                    val name = m["name"] as? String ?: return@mapNotNull null
+                    val cost = (m["cost"] as? Number)?.toInt() ?: return@mapNotNull null
+                    cz.cannaclub.cannaapp.model.Reward(name, cost, m["icon"] as? String ?: "gift")
+                }
+                emit()
+            }
+        awaitClose { reg.remove(); regRewards.remove() }
     }
 
     /** Spustí akce "N× body" do [endsAtMillis]. Vrací počet odeslaných notifikací. */

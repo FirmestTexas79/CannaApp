@@ -10,13 +10,13 @@
 <p>Klepni vpravo nahoře na kolečko s iniciálami (profil) a dole zvol <b>Smazat účet</b>.</p>
 
 <h2>Bez appky</h2>
-<p>Zadej e-mail a telefon, se kterými jsi v programu registrovaný. Účet smažeme hned.</p>
+<p>Zadej e-mail a telefon, se kterými jsi v programu registrovaný. Po ověření účet smažeme nejpozději do 30 dnů. Nejrychleji to jde přímo v appce.</p>
 <form id="f">
   <label for="email">E-mail</label>
   <input id="email" type="email" autocomplete="email" required>
   <label for="phone">Telefon</label>
   <input id="phone" type="tel" autocomplete="tel" required placeholder="+420 777 000 000">
-  <button id="btn" type="submit">Smazat účet natrvalo</button>
+  <button id="btn" type="submit">Požádat o smazání účtu</button>
 </form>
 <div class="msg" id="msg"></div>
 
@@ -30,7 +30,6 @@ const URL_FN = "https://us-central1-cannaapp-e4e8b.cloudfunctions.net/webDeleteA
 const f = document.getElementById("f"), msg = document.getElementById("msg"), btn = document.getElementById("btn");
 f.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!confirm("Opravdu smazat účet i všechny body? Nejde to vrátit.")) return;
   btn.disabled = true;
   try {
     const res = await fetch(URL_FN, {
@@ -38,7 +37,7 @@ f.addEventListener("submit", async (e) => {
       body: JSON.stringify({ data: { email: f.email.value, phone: f.phone.value } })
     });
     const json = await res.json();
-    msg.textContent = json.error ? json.error.message : "Účet byl smazán.";
+    msg.textContent = json.error ? json.error.message : "Žádost jsme přijali. Pokud účet s těmito údaji existuje, smažeme ho nejpozději do 30 dnů.";
     if (!json.error) f.style.display = "none";
   } catch { msg.textContent = "Nepodařilo se spojit se serverem, zkus to později."; }
   msg.style.display = "block";

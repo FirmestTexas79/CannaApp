@@ -313,3 +313,21 @@ body.admin .auth-wrap .wordmark { content: url(img/wordmark-light.png); }
 @media (min-width: 700px) {
   body { padding-top: 32px; }
 }
+
+/* ── Kategorie, odměny, žádosti ── */
+.cat-chips { flex-wrap: nowrap; overflow-x: auto; margin: 4px -2px 0; padding: 2px 2px 6px; scrollbar-width: none; }
+.cat-chips::-webkit-scrollbar { display: none; }
+.cat-chips .chip { white-space: nowrap; flex: none; }
+.reward-edit { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 10px; }
+.reward-row { display: grid; grid-template-columns: 88px 1fr 70px 32px; gap: 6px; align-items: center; }
+.reward-row select, .reward-row input { width: 100%; border: 1px solid var(--border); background: var(--paper); border-radius: 10px; padding: 10px 8px; font-size: 15px; min-width: 0; }
+.reward-row .icon-btn { width: 32px; height: 32px; }
+.panel.warn { background: #F3DCD6; border: 1px solid rgba(139,58,56,.3); margin: 0 0 14px; }
+.panel.warn h3 .ic { color: var(--red); }
+.row-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(139,58,56,.15); }
+.row-line span { display: flex; flex-direction: column; min-width: 0; }
+.row-line small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.phone-row { display: flex; gap: 8px; margin-top: 10px; }
+.phone-row input { flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--paper); border-radius: var(--r-sm); padding: 9px 12px; font-size: 16px; }
+.muted-link { color: var(--faint); font-size: 12.5px; }
+.product-img img.photo { width: 100%; height: 100%; object-fit: cover; }

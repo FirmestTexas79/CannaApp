@@ -4,14 +4,15 @@
 import { initFirebase } from "./fb.js";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import {
-  doc, getDoc, getDocs, setDoc, deleteDoc, addDoc, onSnapshot, collection, query, orderBy, where, limit,
+  doc, getDoc, getDocs, setDoc, deleteDoc, addDoc, updateDoc, onSnapshot, collection, query, orderBy, where, limit,
   runTransaction, Timestamp,
 } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import {
   RANKS, esc, num, chunk4, initials, toMillis, rankFor, activePromo, czechUntil, errMsg, icon, toast, sheet,
-  confirmDialog, bindActions, busy, barcodeSvg, productCard, installHint, dismissHint,
+  confirmDialog, bindActions, busy, barcodeSvg, productsByCategory, installHint, dismissHint,
+  CATEGORIES, categoryOf, SHOP_ITEMS, REWARD_ICONS,
 } from "./common.js";
 
 const { app, auth, db, call } = initFirebase("admin");
@@ -34,6 +35,9 @@ const A = {
   sort: "name",
   config: null,
   products: [],
+  cat: null,                  // vybraná kategorie v Naše zeleň
+  rewards: null,              // ceník odměn (config/rewards)
+  deletions: [],              // žádosti o smazání účtu z webu
 };
 let unsubs = [];
 
@@ -62,6 +66,11 @@ function start() {
     A.config = snap.data() || null;
     if (A.view === "loyalty") updatePromoBox();
   }, () => {}));
+  unsubs.push(onSnapshot(doc(db, "config", "rewards"), (snap) => { A.rewards = snap.data()?.items || null; }, () => {}));
+  unsubs.push(onSnapshot(collection(db, "deletionRequests"), (snap) => {
+    A.deletions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (A.view === "home") updateDeletions();
+  }, () => {}));
   unsubs.push(onSnapshot(query(collection(db, "products"), orderBy("orderIndex")), (snap) => {
     A.products = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     if (A.view === "products") updateProducts();
@@ -77,8 +86,8 @@ function render() {
   const v = A.view;
   if (v === "loading") root.innerHTML = `<div class="center-fill"><span class="spin big light"></span></div>`;
   else if (v === "login") root.innerHTML = loginHtml();
-  else if (v === "home") { root.innerHTML = homeHtml(); updateStats(); updateList(); }
-  else if (v === "loyalty") { root.innerHTML = loyaltyHtml(); updatePromoBox(); countRecipients(); }
+  else if (v === "home") { root.innerHTML = homeHtml(); updateStats(); updateList(); updateDeletions(); }
+  else if (v === "loyalty") { rewardsDraft = null; root.innerHTML = loyaltyHtml(); updatePromoBox(); renderRewards(); countRecipients(); }
   else if (v === "products") { root.innerHTML = productsHtml(); updateProducts(); }
   window.scrollTo(0, 0);
 }
@@ -111,6 +120,7 @@ function homeHtml() {
       <button class="icon-btn round" data-act="logout" aria-label="Odhlásit">${icon("logout")}</button>
     </header>
     ${installHint("cc_hint_a")}
+    <div id="deletions"></div>
     <div class="stats" id="stats"></div>
     <div class="nav-tiles">
       <button class="nav-tile gold" data-act="loyalty">${icon("sparkle")}<span><b>Akce a zprávy</b><small>Body a notifikace</small></span></button>
@@ -128,6 +138,16 @@ function homeHtml() {
     <button class="btn link small center-block import-link" data-act="import">Převzít zákazníky z pokladny</button>
   </div>
   <button class="fab" data-act="addUser" aria-label="Přidat zákazníka">${icon("plus")}</button>`;
+}
+
+function updateDeletions() {
+  const el = document.getElementById("deletions"); if (!el) return;
+  el.innerHTML = A.deletions.length ? `<section class="panel warn">
+    <h3>${icon("trash")} Žádosti o smazání účtu (${A.deletions.length})</h3>
+    <p class="muted small">Zákazník požádal přes web. Smaž do 30 dnů.</p>
+    ${A.deletions.map((d) => `<div class="row-line"><span><b>${esc(d.name)}</b><small>${esc(d.email)}</small></span>
+      <button class="btn small danger" data-act="doDelete" data-id="${esc(d.userId || d.id)}" data-name="${esc(d.name)}">Smazat</button></div>`).join("")}
+  </section>` : "";
 }
 
 function updateStats() {
@@ -193,6 +213,8 @@ function openUser(user, { scanned = false } = {}) {
       <span class="muted">Teď ${num(user.points)} b · celkem ${num(user.totalPoints)} b</span></div>
     ${user.memberCode ? `<div class="mini-code">${barcodeSvg(user.memberCode, { height: 46, width: 1.6 })}<small>${esc(chunk4(user.memberCode))}</small></div>` : ""}
     <div id="dk">${dkHtml()}</div>
+    <div class="phone-row"><input id="phone" type="tel" inputmode="tel" value="${esc(user.phone || "")}" placeholder="Telefon zákazníka">
+      <button class="btn small ghost" data-act="savePhone">Uložit telefon</button></div>
     <div class="eyebrow">Nový zůstatek bodů</div>
     <div class="stepper">
       <button class="step-btn" data-act="dec" aria-label="Ubrat">−</button>
@@ -204,6 +226,7 @@ function openUser(user, { scanned = false } = {}) {
     <div class="eyebrow">Důvod</div>
     <div class="chips" id="reasons">${REASONS.map((x) => `<button class="chip ${x === reason ? "on" : ""}" data-act="reason" data-r="${esc(x)}">${esc(x)}</button>`).join("")}</div>
     <div class="dlg-actions"><button class="btn ghost" data-close>Zrušit</button><button class="btn primary" data-act="save">Uložit</button></div>
+    <button class="btn link small center-block muted-link" data-act="unlink">Odhlásit zákazníka ze všech zařízení</button>
   `);
   const ptsInput = s.body.querySelector("#pts");
   const setPts = (v) => { points = Math.max(0, Math.round(Number(v) || 0)); ptsInput.value = points; s.body.querySelector("#diff").innerHTML = diffHtml(); };
@@ -231,6 +254,19 @@ function openUser(user, { scanned = false } = {}) {
       s.body.querySelectorAll("#reasons .chip").forEach((c) => c.classList.toggle("on", c.dataset.r === reason));
     },
     retryDk: assign,
+    savePhone: (btn) => busy(btn, async () => {
+      const phone = s.body.querySelector("#phone").value.trim();
+      if (phone.replace(/\D/g, "").length < 9) return toast("Neplatné telefonní číslo", "error");
+      try { await updateDoc(doc(db, "users", user.id), { phone }); toast("Telefon uložen"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    }),
+    unlink: async (btn) => {
+      if (!(await confirmDialog({ title: "Odhlásit všechna zařízení?", text: "Zákazník se bude muset v appce znovu přihlásit e-mailem a telefonem.", ok: "Odhlásit", danger: true }))) return;
+      busy(btn, async () => {
+        try { await updateDoc(doc(db, "users", user.id), { authUids: [], fcmToken: "" }); toast("Zařízení odhlášena"); }
+        catch (e) { toast(errMsg(e), "error"); }
+      });
+    },
     save: (btn) => busy(btn, async () => {
       try {
         const applied = await updatePoints(user.id, points - (user.points || 0), reason);
@@ -253,7 +289,9 @@ async function updatePoints(userId, diff, reason) {
     const snap = await tx.get(userRef);
     const current = snap.get("points") || 0, total = snap.get("totalPoints") || 0;
     const updated = Math.max(0, current + diff), applied = updated - current;
-    tx.update(userRef, { points: updated, totalPoints: applied > 0 ? total + applied : total });
+    // Oprava chyby vrací i celkové body (rank); jinak se celkové body nesnižují
+    const newTotal = applied > 0 ? total + applied : reason === "Oprava chyby" ? Math.max(0, total + applied) : total;
+    tx.update(userRef, { points: updated, totalPoints: newTotal });
     const txRef = doc(collection(db, "users", userId, "transactions"));
     tx.set(txRef, {
       id: txRef.id, type: applied >= 0 ? "ADD" : "SUBTRACT", amount: Math.abs(applied), reason,
@@ -375,6 +413,13 @@ function loyaltyHtml() {
       <button class="btn gold wide" data-act="startPromo">Spustit akci</button>
     </section>
     <section class="panel">
+      <h3>${icon("gift")} Odměny za body</h3>
+      <p class="muted">Co si zákazník může vzít za body. Sleva na cokoli (1 bod = 1 Kč) platí vždy, tyhle odměny jsou navíc.</p>
+      <div id="rewards" class="reward-edit"></div>
+      <button class="btn ghost small" data-act="addReward">${icon("plus")} Přidat odměnu</button>
+      <button class="btn primary wide" data-act="saveRewards">Uložit odměny</button>
+    </section>
+    <section class="panel">
       <h3>${icon("bell")} Hromadná zpráva</h3>
       <label class="field"><span>Nadpis</span><input id="bTitle" maxlength="65" placeholder="Dorazila nová odrůda"></label>
       <label class="field"><span>Text</span><textarea id="bBody" maxlength="240" rows="3" placeholder="Lemon Haze je zpátky skladem. Stav se!"></textarea></label>
@@ -385,6 +430,26 @@ function loyaltyHtml() {
       <p class="muted small">Zprávu dostanou zákazníci s Android appkou a zapnutými notifikacemi.</p>
     </section>
   </div>`;
+}
+
+const ICON_LABELS = { preroll: "Jointík", bud: "Kytka", cube: "Hash", gift: "Dárek", leaf: "Lístek", bag: "Taška" };
+let rewardsDraft = null;
+
+function renderRewards() {
+  const el = document.getElementById("rewards"); if (!el) return;
+  if (!rewardsDraft) rewardsDraft = (A.rewards?.length ? A.rewards : SHOP_ITEMS).map((r) => ({ ...r }));
+  el.innerHTML = rewardsDraft.map((r, i) => `<div class="reward-row" data-i="${i}">
+    <select data-k="icon" aria-label="Ikona">${REWARD_ICONS.map((k) => `<option value="${k}" ${k === r.icon ? "selected" : ""}>${ICON_LABELS[k]}</option>`).join("")}</select>
+    <input data-k="name" value="${esc(r.name)}" placeholder="Název odměny" maxlength="40">
+    <input data-k="cost" type="number" inputmode="numeric" min="1" value="${Number(r.cost) || ""}" placeholder="bodů">
+    <button class="icon-btn" data-act="delReward" data-i="${i}" aria-label="Odebrat">${icon("close")}</button></div>`).join("")
+    || `<p class="muted small">Žádné odměny – zákazníci uvidí jen slevu.</p>`;
+}
+function readRewards() {
+  document.querySelectorAll("#rewards .reward-row").forEach((row) => {
+    const r = rewardsDraft[Number(row.dataset.i)];
+    row.querySelectorAll("[data-k]").forEach((f) => { r[f.dataset.k] = f.dataset.k === "cost" ? Math.round(Number(f.value) || 0) : f.value.trim(); });
+  });
 }
 
 function updatePromoBox() {
@@ -418,6 +483,17 @@ async function countRecipients() {
 const chipsSelect = (el, attr) => el.parentElement.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === el));
 
 const loyaltyActions = {
+  addReward: () => { readRewards(); rewardsDraft.push({ icon: "gift", name: "", cost: 0 }); renderRewards(); },
+  delReward: (el) => { readRewards(); rewardsDraft.splice(Number(el.dataset.i), 1); renderRewards(); },
+  saveRewards: (btn) => {
+    readRewards();
+    const items = rewardsDraft.filter((r) => r.name && r.cost > 0).map(({ icon, name, cost }) => ({ icon, name, cost }));
+    if (items.length !== rewardsDraft.length) return toast("Každá odměna potřebuje název a počet bodů.", "error");
+    busy(btn, async () => {
+      try { await setDoc(doc(db, "config", "rewards"), { items, updatedAt: Timestamp.now() }); toast("Odměny uloženy, zákazníci je hned uvidí"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    }, "Ukládám…");
+  },
   mult: (el) => {
     L.multiplier = Number(el.dataset.m); chipsSelect(el);
     document.getElementById("promoLabel").placeholder = L.multiplier === 2 ? "Dvojité body" : "Trojité body";
@@ -462,13 +538,13 @@ const loyaltyActions = {
 function productsHtml() {
   return `<div class="pill admin">
     ${back("Naše zeleň", "Správa produktů")}
-    <button class="btn gold wide" data-act="newProduct">${icon("plus")} Přidat odrůdu</button>
-    <div id="products" class="products"></div>
+    <button class="btn gold wide" data-act="newProduct">${icon("plus")} Přidat produkt</button>
+    <div id="products"></div>
   </div>`;
 }
 function updateProducts() {
   const el = document.getElementById("products"); if (!el) return;
-  el.innerHTML = A.products.map((p) => productCard(p, { admin: true })).join("") || `<p class="muted center">Zatím žádné produkty.</p>`;
+  el.innerHTML = A.products.length ? productsByCategory(A.products, A.cat, { admin: true }) : `<p class="muted center">Zatím žádné produkty.</p>`;
 }
 
 /** Zmenší fotku na max 1200 px a převede na JPEG (rychlé nahrání i z mobilu). */
@@ -484,18 +560,21 @@ async function toJpeg(file, max = 1200) {
 
 function editProduct(p) {
   const isNew = !p;
-  p = p || { id: "", name: "", description: "", forms: ["1g", "3g", "volně"], imageUrl: "", imageName: "", orderIndex: 0 };
+  p = p || { id: "", name: "", description: "", forms: [], category: A.cat || CATEGORIES[0], imageUrl: "", imageName: "", orderIndex: 0 };
+  let category = categoryOf(p);
   const forms = new Set(p.forms || []);
   let file = null;
   const img = p.imageUrl || (p.imageName ? `/app/img/${p.imageName}.png` : "");
   const s = sheet(`
-    <h2>${isNew ? "Nová odrůda" : "Upravit odrůdu"}</h2>
+    <h2>${isNew ? "Nový produkt" : "Upravit produkt"}</h2>
     <div class="eyebrow">Obrázek</div>
     <label class="img-pick"><span id="imgPrev">${img ? `<img src="${esc(img)}" alt="">` : icon("camera")}</span>
       <input type="file" accept="image/*" id="imgFile" hidden><b>Vybrat fotku</b></label>
-    <label class="field"><span>Název odrůdy</span><input id="pName" value="${esc(p.name)}"></label>
-    <label class="field"><span>Popis odrůdy</span><textarea id="pDesc" rows="3">${esc(p.description)}</textarea></label>
-    <div class="eyebrow">Dostupné formy</div>
+    <label class="field"><span>Název</span><input id="pName" value="${esc(p.name)}"></label>
+    <label class="field"><span>Popis</span><textarea id="pDesc" rows="4">${esc(p.description)}</textarea></label>
+    <div class="eyebrow">Kategorie</div>
+    <div class="chips" id="cats">${CATEGORIES.map((c) => `<button class="chip ${c === category ? "on" : ""}" data-act="pcat" data-cat="${esc(c)}">${esc(c)}</button>`).join("")}</div>
+    <div class="eyebrow">Dostupné formy (jen u konopí)</div>
     <div class="chips" id="forms">${ALL_FORMS.map((f) => `<button class="chip ${forms.has(f) ? "on" : ""}" data-act="form" data-f="${esc(f)}">${esc(f)}</button>`).join("")}</div>
     <div class="dlg-actions">
       ${isNew ? "" : `<button class="btn ghost danger-text" data-act="del">${icon("trash")} Smazat</button>`}
@@ -505,6 +584,7 @@ function editProduct(p) {
     if (file) s.body.querySelector("#imgPrev").innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`;
   });
   bindActions(s.el, {
+    pcat: (el) => { category = el.dataset.cat; s.body.querySelectorAll("#cats .chip").forEach((c) => c.classList.toggle("on", c === el)); },
     form: (el) => { const f = el.dataset.f; forms.has(f) ? forms.delete(f) : forms.add(f); el.classList.toggle("on", forms.has(f)); },
     del: async (btn) => {
       if (!(await confirmDialog({ title: `Smazat „${p.name}“?`, text: "Tato akce je nevratná.", ok: "Smazat", danger: true }))) return;
@@ -512,13 +592,13 @@ function editProduct(p) {
         try {
           await deleteDoc(doc(db, "products", p.id));
           deleteObject(ref(storage, `products/${p.id}.jpg`)).catch(() => {});
-          toast("Odrůda smazána"); s.close();
+          toast("Produkt smazán"); s.close();
         } catch (e) { toast(errMsg(e), "error"); }
       });
     },
     saveProduct: (btn) => {
       const name = s.body.querySelector("#pName").value.trim();
-      if (!name) return toast("Vyplň název odrůdy.", "error");
+      if (!name) return toast("Vyplň název.", "error");
       busy(btn, async () => {
         try {
           const id = p.id || doc(collection(db, "products")).id;
@@ -530,7 +610,7 @@ function editProduct(p) {
           }
           const orderIndex = isNew ? A.products.reduce((m, x) => Math.max(m, x.orderIndex || 0), -1) + 1 : p.orderIndex || 0;
           await setDoc(doc(db, "products", id), {
-            id, name, description: s.body.querySelector("#pDesc").value.trim(),
+            id, name, category, description: s.body.querySelector("#pDesc").value.trim(),
             forms: ALL_FORMS.filter((f) => forms.has(f)), imageUrl, imageName: p.imageName || "", orderIndex,
           });
           toast("Uloženo"); s.close();
@@ -569,6 +649,14 @@ bindActions(root, {
   addUser,
   import: importCustomers,
   newProduct: () => editProduct(null),
+  cat: (el) => { A.cat = el.dataset.cat; updateProducts(); },
+  doDelete: async (el) => {
+    if (!(await confirmDialog({ title: `Smazat účet „${el.dataset.name}“?`, text: "Smažou se body i historie. Nejde to vrátit.", ok: "Smazat", danger: true }))) return;
+    busy(el, async () => {
+      try { await call("adminDeleteCustomer", { userId: el.dataset.id }); toast("Účet smazán"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    }, "Mažu…");
+  },
   editProduct: (el) => editProduct(A.products.find((x) => x.id === el.dataset.id)),
   dismissHint,
   logout: async () => {

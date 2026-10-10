@@ -58,7 +58,17 @@ data class ShopItem(
     val pointsCost: Int
 )
 
-// ── Ceník odměn ──────────────────────────────────────────
+/** Ikona odměny podle klíče z config/rewards (stejné klíče jako ve webovém adminu). */
+fun rewardIcon(key: String): Int = when (key) {
+    "preroll" -> R.drawable.ic_preroll
+    "bud"     -> R.drawable.ic_bud
+    "cube"    -> R.drawable.ic_cube
+    "leaf"    -> R.drawable.ic_leaf
+    "bag"     -> R.drawable.ic_bag
+    else      -> R.drawable.ic_gift
+}
+
+// ── Výchozí ceník odměn (než ho obsluha upraví ve webovém adminu) ──
 val shopItems = listOf(
     ShopItem(R.drawable.ic_preroll, "Prémiový preroll", 20),
     ShopItem(R.drawable.ic_preroll, "3× preroll",       40),
@@ -149,7 +159,11 @@ fun RewardsSheet(
                 .background(Paper)
                 .border(1.dp, BorderSoft, RoundedCornerShape(20.dp))
         ) {
-            shopItems.forEachIndexed { i, item ->
+            val items = loyalty.rewards
+                .map { ShopItem(rewardIcon(it.icon), it.name, it.cost) }
+                .ifEmpty { shopItems }
+                .sortedBy { it.pointsCost }
+            items.forEachIndexed { i, item ->
                 if (i > 0) HorizontalDivider(color = BorderSoft, modifier = Modifier.padding(start = 70.dp))
                 RewardRow(item = item, points = currentPoints)
             }

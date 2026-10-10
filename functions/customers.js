@@ -8,7 +8,8 @@
  *  - customerLogin    (callable) → { userId }
  *  - customerRegister (callable) → { userId }
  *  - deleteMyAccount  (callable) → smaže zákazníka, který je přihlášený v appce
- *  - webDeleteAccount (callable, z webu) → smazání účtu bez appky (e-mail + telefon)
+ *  - webDeleteAccount (callable, z webu) → žádost o smazání účtu (vyřídí obsluha)
+ *  - adminDeleteCustomer (callable, obsluha) → smazání zákazníka
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
@@ -58,9 +59,9 @@ exports.customerLogin = onCall(async (request) => {
   const found = await findCustomer(email, phone, name);
   if (!found) throw new HttpsError("not-found", "Zákazník nenalezen");
 
-  const update = { authUids: FieldValue.arrayUnion(uid) };
-  if (found.setPhone) update.phone = String(phone).trim();
-  await found.doc.ref.update(update);
+  // Telefon u zákazníků bez telefonu (převzatých z pokladny) appka sama nedoplní:
+  // kdo zná jen e-mail a jméno, nesmí účet "zabrat" svým číslem. Telefon doplní obsluha.
+  await found.doc.ref.update({ authUids: FieldValue.arrayUnion(uid) });
   return { userId: found.doc.id };
 });
 
@@ -100,7 +101,7 @@ exports.customerRegister = onCall(async (request) => {
 // ════════════════════════════════════════════════════════════════════
 // Smazání účtu (požadavek Google Play: v appce i přes web)
 // Smaže zákazníka i historii bodů. Záznam zákazníka v Dotykačce zůstává
-// (účetní doklady prodejny), jen se z něj odebere členský kód.
+// (účetní doklady prodejny); členský kód z něj odebere trigger onUserDeleted.
 // ════════════════════════════════════════════════════════════════════
 async function deleteCustomer(ref, reason) {
   const snap = await ref.get();
@@ -116,13 +117,34 @@ exports.deleteMyAccount = onCall(async (request) => {
   return { ok: true };
 });
 
+// Web: jen ŽÁDOST o smazání (bez přihlášení nelze ověřit, že jde o majitele účtu).
+// Obsluha ji vyřídí ve webové administraci. Odpověď je vždy stejná, aby web
+// neprozrazoval, kdo je členem.
 exports.webDeleteAccount = onCall(async (request) => {
   const { email, phone } = request.data || {};
   if (!email || !phoneKey(phone)) throw new HttpsError("invalid-argument", "Vyplň e-mail i telefon.");
-  // Na webu jen e-mail + telefon (bez varianty se jménem)
   const found = await findCustomer(email, phone, null, { allowNameOnly: false });
-  if (!found) throw new HttpsError("not-found", "Účet s tímto e-mailem a telefonem jsme nenašli.");
-  await deleteCustomer(found.doc.ref, "web");
+  if (found) {
+    await db().collection("deletionRequests").doc(found.doc.id).set({
+      userId: found.doc.id, name: found.doc.get("name") || "", email: normEmail(email),
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    logger.info("Žádost o smazání účtu z webu", { userId: found.doc.id });
+  }
+  return { ok: true };
+});
+
+// Obsluha: smazání zákazníka (vyřízení žádosti z webu)
+exports.adminDeleteCustomer = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Nejsi přihlášený jako obsluha.");
+  if (!(await db().collection("admins").doc(request.auth.uid).get()).exists) {
+    throw new HttpsError("permission-denied", "Tento účet není obsluha.");
+  }
+  const { userId } = request.data || {};
+  if (!userId) throw new HttpsError("invalid-argument", "Chybí zákazník.");
+  const ref = users().doc(String(userId));
+  if ((await ref.get()).exists) await deleteCustomer(ref, "admin");
+  await db().collection("deletionRequests").doc(String(userId)).delete();
   return { ok: true };
 });
 

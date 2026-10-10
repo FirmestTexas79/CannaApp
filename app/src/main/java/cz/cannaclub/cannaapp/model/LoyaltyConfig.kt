@@ -11,7 +11,9 @@ import com.google.firebase.Timestamp
 data class LoyaltyConfig(
     /** Bonus bodů za nákup v % podle ranku, klíč = MemberRank.name (pevný). */
     val rankBonus: Map<String, Int> = DEFAULT_RANK_BONUS,
-    val promo: Promo? = null
+    val promo: Promo? = null,
+    /** Ceník odměn z config/rewards (upravuje obsluha ve webovém adminu); prázdný = výchozí. */
+    val rewards: List<Reward> = emptyList()
 ) {
     fun bonusFor(rank: MemberRank): Int = rankBonus[rank.name] ?: DEFAULT_RANK_BONUS[rank.name] ?: 0
 
@@ -42,6 +44,8 @@ data class LoyaltyConfig(
         }
     }
 }
+
+data class Reward(val name: String, val cost: Int, val icon: String = "gift")
 
 data class Promo(
     val multiplier: Int,
