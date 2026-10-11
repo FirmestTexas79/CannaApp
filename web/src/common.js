@@ -22,6 +22,57 @@ export function rankFor(total = 0) {
   return { ...r, index: i, next, progress, missing: next ? next.from - total : 0 };
 }
 
+// ── Odznak ranku: kruh s přechodem v barvě ranku + ikona (jako RankBadge v Android appce) ──
+const rgb = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+const mix = (c, to, k) => `rgb(${rgb(c).map((v, i) => Math.round(v + (to[i] - v) * k)).join(",")})`;
+export function rankBadge(rank, { size = 44, locked = false } = {}) {
+  const c = rank.color;
+  const ic = rank.key === "ZAKAZNIK" ? "bud" : rank.key === "RODINA" ? "sparkle" : "leaf";
+  const bg = locked ? "" : `background:linear-gradient(135deg, ${mix(c, [255, 255, 255], 0.28)}, ${c}, ${mix(c, [0, 0, 0], 0.18)});`;
+  return `<span class="rbadge${locked ? " locked" : ""}" style="--s:${size}px;${bg}">${icon(ic)}</span>`;
+}
+
+// ── Dekorativní listy za pillem (jako DecorativePlants v Android appce) ──
+function leaf(px, py, length, width, angle, color, alpha) {
+  const hw = width * 0.5, f = (n) => n.toFixed(1);
+  const body = `M${f(px)} ${f(py)} C${f(px - hw * 1.15)} ${f(py - length * 0.25)} ${f(px - hw * 1.2)} ${f(py - length * 0.65)} ${f(px)} ${f(py - length)} ` +
+    `C${f(px + hw * 1.2)} ${f(py - length * 0.65)} ${f(px + hw * 1.15)} ${f(py - length * 0.25)} ${f(px)} ${f(py)}Z`;
+  const vein = `M${f(px)} ${f(py)} C${f(px + hw * 0.12)} ${f(py - length * 0.3)} ${f(px + hw * 0.08)} ${f(py - length * 0.65)} ${f(px)} ${f(py - length)}`;
+  return `<g transform="rotate(${angle} ${f(px)} ${f(py)})"><path d="${body}" fill="${color}" fill-opacity="${alpha}"/>` +
+    `<path d="${vein}" fill="none" stroke="${color}" stroke-opacity="${(alpha * 0.3).toFixed(3)}" stroke-width="1.5"/></g>`;
+}
+function plantsHtml(w, h, color, alpha) {
+  const vL = h * 0.09, vW = vL * 0.26, hL = w * 0.095, hW = hL * 0.26, a = alpha;
+  return [
+    leaf(0, h, vL * 1.15, vW * 1.15, -62, color, a), leaf(0, h, vL, vW, -42, color, a), leaf(w * 0.05, h, vL * 0.82, vW * 0.82, -24, color, a),
+    leaf(0, h * 0.72, hL, hW, 32, color, a * 0.7),
+    leaf(w, 0, vL * 1.15, vW * 1.15, 118, color, a), leaf(w, 0, vL, vW, 138, color, a), leaf(w * 0.95, 0, vL * 0.82, vW * 0.82, 156, color, a),
+    leaf(w, h * 0.28, hL, hW, -148, color, a * 0.7),
+    leaf(w, h, vL * 0.72, vW * 0.72, 158, color, a * 0.55), leaf(w, h, vL * 0.55, vW * 0.55, 138, color, a * 0.4),
+    leaf(0, 0, vL * 0.68, vW * 0.68, -22, color, a * 0.52), leaf(0, 0, vL * 0.5, vW * 0.5, -5, color, a * 0.38),
+  ].join("");
+}
+let plantsKind = null;
+function drawPlants() {
+  const el = document.getElementById("plants"); if (!el) return;
+  const w = window.innerWidth, h = window.innerHeight;
+  const [color, alpha] = plantsKind === "admin" ? ["#F5EDD8", 0.333] : ["#3E5E35", 0.733];
+  el.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  el.innerHTML = plantsHtml(w, h, color, alpha);
+}
+/** kind: "customer" (zelené listy na béžové) | "admin" (krémové na tmavé) */
+export function mountPlants(kind = "customer") {
+  plantsKind = kind;
+  let el = document.getElementById("plants");
+  if (!el) {
+    el = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    el.id = "plants"; el.setAttribute("aria-hidden", "true"); el.setAttribute("preserveAspectRatio", "none");
+    document.body.prepend(el);
+    let t; window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(drawPlants, 150); });
+  }
+  drawPlants();
+}
+
 // ── Kategorie nabídky (pořadí v appce; stejné jako Product.CATEGORIES v Android appce) ──
 export const CATEGORIES = ["Konopí", "CBD", "Kosmetika", "Kuřácké potřeby", "Pro mazlíčky", "Pití", "Doplňky"];
 export const categoryOf = (p) => (CATEGORIES.includes(p.category) ? p.category : CATEGORIES[0]);
@@ -32,10 +83,24 @@ export function productsByCategory(products, current, { admin = false } = {}) {
   const cur = cats.includes(current) ? current : cats[0];
   const list = products.filter((p) => categoryOf(p) === cur);
   const count = (c) => products.filter((p) => categoryOf(p) === c).length;
+  if (!cats.length) return emptyProducts(admin);
   return `<div class="cat-chips">${cats.map((c) => `<button class="cat-chip ${c === cur ? "on" : ""}" data-act="cat" data-cat="${esc(c)}">${esc(c)}<i>${count(c)}</i></button>`).join("")}</div>
     ${list.length ? `<div class="pgrid">${list.map((p, i) => productCard(p, { admin, featured: i === 0 })).join("")}</div>`
       : `<p class="muted center">Zatím tu nic není.</p>`}`;
 }
+
+/** Prázdná nabídka (jako v Android appce). */
+export const emptyProducts = (admin = false) => `<div class="empty big">
+  <span class="bubble lg">${icon("leaf")}</span>
+  <p>${admin ? "Zatím žádné produkty.<br>Přidej první tlačítkem +" : "Nabídku právě doplňujeme."}</p></div>`;
+
+/** Záhlaví Nabídky: kulaté tlačítko zpět + počet produktů + titulek (zákazník i admin stejně). */
+export const shopHead = (count, backAttr = "data-close") => `<div class="shop-head">
+    <button class="round-btn" ${backAttr} aria-label="Zpět">${icon("back")}</button>
+    ${count == null ? "" : `<span class="count-pill">${count} produktů</span>`}
+  </div>
+  <div class="shop-title"><span class="eyebrow">CannaClub · Hradec Králové</span><h1>Nabídka</h1>
+    <p>Na prodejně ti s výběrem rádi poradíme.</p></div>`;
 
 // ── Ikony odměn (stejné klíče jako v Android appce) ──
 export const REWARD_ICONS = ["preroll", "bud", "cube", "gift", "leaf", "bag"];
@@ -58,9 +123,12 @@ export const firstName = (name) => String(name || "").trim().split(/\s+/)[0] || 
 export const toMillis = (ts) => (ts?.toMillis ? ts.toMillis() : ts?.seconds ? ts.seconds * 1000 : Number(ts) || 0);
 
 const czDay = new Intl.DateTimeFormat("cs-CZ", { weekday: "long", day: "numeric", month: "long" });
+const czDayYear = new Intl.DateTimeFormat("cs-CZ", { day: "numeric", month: "long", year: "numeric" });
 const czTime = new Intl.DateTimeFormat("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+/** "Dnes", "Včera", "Pondělí 15. září", u starších let "15. září 2025" (jako v Android appce). */
 export function dayLabel(ms) {
   const d = new Date(ms), today = new Date();
+  if (d.getFullYear() !== today.getFullYear()) return czDayYear.format(d);
   const diff = Math.round((new Date(today.toDateString()) - new Date(d.toDateString())) / 86_400_000);
   if (diff === 0) return "Dnes";
   if (diff === 1) return "Včera";
@@ -69,14 +137,19 @@ export function dayLabel(ms) {
 }
 export const timeLabel = (ms) => czTime.format(new Date(ms));
 
-/** "do neděle 23:59", "do dnes 20:00" … */
-export function czechUntil(ms) {
-  const d = new Date(ms), now = new Date();
-  const days = Math.round((new Date(d.toDateString()) - new Date(now.toDateString())) / 86_400_000);
-  const t = czTime.format(d);
-  if (days <= 0) return `dnes do ${t}`;
-  if (days === 1) return `do zítřka ${t}`;
-  return `do ${new Intl.DateTimeFormat("cs-CZ", { weekday: "long" }).format(d)} ${t}`;
+// 2. pád dní v týdnu (do pondělí, do středy…), index = Date#getDay()
+const DAY_GEN = ["neděle", "pondělí", "úterý", "středy", "čtvrtka", "pátku", "soboty"];
+
+/** "dnes do 23:59", "zítra do 18:00", "do neděle 23:59", "do 3. 10. 23:59" (stejně jako v Android appce). */
+export function czechUntil(ms, now = Date.now()) {
+  const end = new Date(ms), today = new Date(now);
+  const dayNo = (d) => Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000);
+  const days = dayNo(end) - dayNo(today);
+  const time = `${end.getHours()}:${String(end.getMinutes()).padStart(2, "0")}`;
+  if (days <= 0) return `dnes do ${time}`;
+  if (days === 1) return `zítra do ${time}`;
+  if (days < 7) return `do ${DAY_GEN[end.getDay()]} ${time}`;
+  return `do ${end.getDate()}. ${end.getMonth() + 1}. ${time}`;
 }
 
 export function activePromo(config, now = Date.now()) {
@@ -232,7 +305,7 @@ export function productCard(p, { admin = false, featured = false } = {}) {
     ${productPhoto(p, featured)}
     <span class="pinfo">
       ${featured ? `<span class="pcat">${esc(categoryOf(p))}</span>` : ""}
-      <b>${esc(p.name)}</b>${formsLine(p)}
+      <b>${esc(p.name)}</b>${formsLine(p) || (featured ? "" : `<span class="pmore">Detail</span>`)}
     </span>
     ${admin ? `<span class="pedit">${icon("edit")}</span>` : ""}
   </button>`;

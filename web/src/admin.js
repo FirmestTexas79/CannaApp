@@ -12,12 +12,13 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import {
   RANKS, esc, num, chunk4, initials, toMillis, rankFor, activePromo, czechUntil, errMsg, icon, toast, sheet,
   confirmDialog, bindActions, busy, barcodeSvg, productsByCategory, installHint, dismissHint,
-  CATEGORIES, categoryOf, SHOP_ITEMS, REWARD_ICONS,
+  CATEGORIES, categoryOf, SHOP_ITEMS, REWARD_ICONS, rankBadge, mountPlants, shopHead,
 } from "./common.js";
 
 const { app, auth, db, call } = initFirebase("admin");
 const storage = getStorage(app);
 const root = document.getElementById("app");
+mountPlants("admin");
 
 const REASONS = ["Vrácení obalů", "Nákup v obchodě", "Věrnostní bonus", "Oprava chyby", "Uplatnění odměny", "Jiný důvod"];
 const STEPS = [-10, -5, 5, 10, 20];
@@ -94,15 +95,17 @@ function render() {
 
 function loginHtml() {
   return `<div class="auth-wrap">
-    <img class="wordmark" src="/app/img/wordmark.png" alt="CannaClub">
-    <div class="pill auth-card">
-      <div class="eyebrow gold">Obsluha</div>
-      <h1>Přihlášení</h1>
+    <div class="pill auth-card admin-login">
+      <span class="emblem">${icon("user")}</span>
+      <span class="admin-badge">Admin přístup</span>
+      <h1>Cannaclub</h1>
+      <p class="muted sub">Správa zákazníků</p>
       <form id="adminLogin" novalidate>
-        <label class="field"><span>E-mail</span><input name="email" type="email" autocomplete="username" inputmode="email" required></label>
-        <label class="field"><span>Heslo</span><input name="password" type="password" autocomplete="current-password" required></label>
-        <button class="btn gold wide" type="submit">Přihlásit se</button>
+        <label class="field"><span>Přihlašovací e-mail</span><input name="email" type="email" autocomplete="username" inputmode="email" placeholder="obsluha@cannaclub.cz" required></label>
+        <label class="field"><span>Heslo</span><input name="password" type="password" autocomplete="current-password" placeholder="••••••••" required></label>
+        <button class="btn gold wide" type="submit">Vstoupit do správy</button>
       </form>
+      <a class="btn link wide faint" href="/app/">Zpět na přihlášení zákazníka</a>
     </div>
     ${installHint("cc_hint_a")}
   </div>`;
@@ -207,25 +210,29 @@ function openUser(user, { scanned = false } = {}) {
   };
 
   const s = sheet(`
-    <div class="cust-head"><span class="avatar ring big" style="--rank:${r.color}">${esc(initials(user.name))}</span>
+    <div class="cust-head"><span class="avatar">${esc(initials(user.name))}</span>
       <div><h2>${esc(user.name)}</h2><small class="muted">${esc(user.email)}</small><small class="muted">${esc(user.phone || "")}</small></div></div>
-    <div class="cust-meta"><span class="rank-chip dark"><i style="background:${r.color}"></i>${esc(r.label)}</span>
-      <span class="muted">Teď ${num(user.points)} b · celkem ${num(user.totalPoints)} b</span></div>
-    ${user.memberCode ? `<div class="mini-code">${barcodeSvg(user.memberCode, { height: 46, width: 1.6 })}<small>${esc(chunk4(user.memberCode))}</small></div>` : ""}
+    ${user.memberCode ? `<div class="mini-code">${barcodeSvg(user.memberCode, { height: 56, width: 1.6 })}<small>${esc(chunk4(user.memberCode))}</small></div>` : ""}
     <div id="dk">${dkHtml()}</div>
-    <div class="phone-row"><input id="phone" type="tel" inputmode="tel" value="${esc(user.phone || "")}" placeholder="Telefon zákazníka">
-      <button class="btn small ghost" data-act="savePhone">Uložit telefon</button></div>
-    <div class="eyebrow">Nový zůstatek bodů</div>
+    <div class="rank-box">
+      <span class="rb-left">${rankBadge(r, { size: 22 })}<span>${esc(r.label)}</span></span>
+      <span class="rb-right"><small>Celkem: ${num(user.totalPoints)} b</small><small class="strong">Zůstatek: ${num(user.points)} b</small></span>
+    </div>
+    <hr class="sep">
+    <div class="eyebrow flat">Důvod úpravy</div>
+    <div class="chips" id="reasons">${REASONS.map((x) => `<button class="chip ${x === reason ? "sel" : ""}" data-act="reason" data-r="${esc(x)}">${esc(x)}</button>`).join("")}</div>
+    <hr class="sep">
+    <div class="eyebrow flat">Nový zůstatek bodů</div>
     <div class="stepper">
-      <button class="step-btn" data-act="dec" aria-label="Ubrat">−</button>
+      <button class="step-btn minus" data-act="dec" aria-label="Ubrat">−</button>
       <input id="pts" type="number" inputmode="numeric" min="0" value="${points}">
-      <button class="step-btn" data-act="inc" aria-label="Přidat">+</button>
+      <button class="step-btn plus" data-act="inc" aria-label="Přidat">+</button>
     </div>
     <div class="chips center">${STEPS.map((n) => `<button class="chip ${n > 0 ? "pos" : "neg"}" data-act="step" data-n="${n}">${n > 0 ? "+" : "−"}${Math.abs(n)}</button>`).join("")}</div>
     <div class="diff" id="diff">${diffHtml()}</div>
-    <div class="eyebrow">Důvod</div>
-    <div class="chips" id="reasons">${REASONS.map((x) => `<button class="chip ${x === reason ? "on" : ""}" data-act="reason" data-r="${esc(x)}">${esc(x)}</button>`).join("")}</div>
-    <div class="dlg-actions"><button class="btn ghost" data-close>Zrušit</button><button class="btn primary" data-act="save">Uložit</button></div>
+    <div class="dlg-actions"><button class="btn ghost" data-close>Zrušit</button><button class="btn primary grow" data-act="save">Uložit</button></div>
+    <div class="phone-row"><input id="phone" type="tel" inputmode="tel" value="${esc(user.phone || "")}" placeholder="Telefon zákazníka">
+      <button class="btn small ghost" data-act="savePhone">Uložit telefon</button></div>
     <button class="btn link small center-block muted-link" data-act="unlink">Odhlásit zákazníka ze všech zařízení</button>
   `);
   const ptsInput = s.body.querySelector("#pts");
@@ -251,7 +258,7 @@ function openUser(user, { scanned = false } = {}) {
     step: (el) => setPts(points + Number(el.dataset.n)),
     reason: (el) => {
       reason = el.dataset.r;
-      s.body.querySelectorAll("#reasons .chip").forEach((c) => c.classList.toggle("on", c.dataset.r === reason));
+      s.body.querySelectorAll("#reasons .chip").forEach((c) => c.classList.toggle("sel", c.dataset.r === reason));
     },
     retryDk: assign,
     savePhone: (btn) => busy(btn, async () => {
@@ -401,16 +408,18 @@ function loyaltyHtml() {
   return `<div class="pill admin">
     ${back("Akce a zprávy", "Obsluha")}
     <section class="panel">
-      <h3>${icon("sparkle")} Akce „více bodů“</h3>
+      <h3>${icon("sparkle")} Akce: více bodů za nákup</h3>
       <div id="promoBox"></div>
-      <p class="muted">Zákazníci dostanou za nákup násobek bodů. V appce uvidí banner s akcí.</p>
-      <div class="eyebrow">Násobek</div>
-      <div class="chips">${[2, 3].map((m) => `<button class="chip ${L.multiplier === m ? "on" : ""}" data-act="mult" data-m="${m}">${m}× body</button>`).join("")}</div>
-      <div class="eyebrow">Jak dlouho</div>
-      <div class="chips">${DURATIONS.map(([k, l]) => `<button class="chip ${L.duration === k ? "on" : ""}" data-act="dur" data-k="${k}">${l}</button>`).join("")}</div>
-      <label class="field"><span>Název akce</span><input id="promoLabel" maxlength="40" placeholder="${L.multiplier === 2 ? "Dvojité body" : "Trojité body"}"></label>
-      <label class="switch"><input type="checkbox" id="promoNotify" checked><span>Poslat zákazníkům upozornění</span></label>
-      <button class="btn gold wide" data-act="startPromo">Spustit akci</button>
+      <div id="promoForm">
+        <p class="muted">Zákazníci dostanou za nákup násobek bodů. V appce uvidí banner s akcí.</p>
+        <div class="eyebrow">Kolikrát víc bodů</div>
+        <div class="chips">${[2, 3].map((m) => `<button class="chip ${L.multiplier === m ? "on" : ""}" data-act="mult" data-m="${m}">${m}×</button>`).join("")}</div>
+        <div class="eyebrow">Jak dlouho</div>
+        <div class="chips">${DURATIONS.map(([k, l]) => `<button class="chip ${L.duration === k ? "on" : ""}" data-act="dur" data-k="${k}">${l}</button>`).join("")}</div>
+        <label class="field"><span>Název akce (nepovinné)</span><input id="promoLabel" maxlength="40" placeholder="${L.multiplier === 2 ? "Dvojité body" : "Trojité body"}"></label>
+        <label class="switch"><input type="checkbox" id="promoNotify" checked><span>Poslat zákazníkům upozornění</span></label>
+        <button class="btn gold wide" data-act="startPromo">Spustit akci</button>
+      </div>
     </section>
     <section class="panel">
       <h3>${icon("gift")} Odměny za body</h3>
@@ -420,13 +429,13 @@ function loyaltyHtml() {
       <button class="btn primary wide" data-act="saveRewards">Uložit odměny</button>
     </section>
     <section class="panel">
-      <h3>${icon("bell")} Hromadná zpráva</h3>
+      <h3>${icon("bell")} Zpráva zákazníkům</h3>
       <label class="field"><span>Nadpis</span><input id="bTitle" maxlength="65" placeholder="Dorazila nová odrůda"></label>
       <label class="field"><span>Text</span><textarea id="bBody" maxlength="240" rows="3" placeholder="Lemon Haze je zpátky skladem. Stav se!"></textarea></label>
       <div class="eyebrow">Komu</div>
       <div class="chips">${AUDIENCES.map((a, i) => `<button class="chip ${L.minRank === i ? "on" : ""}" data-act="aud" data-i="${i}">${a}</button>`).join("")}</div>
       <p class="muted small" id="recipients"></p>
-      <button class="btn primary wide" data-act="sendBroadcast">Odeslat zprávu</button>
+      <button class="btn gold wide" data-act="sendBroadcast" id="sendBtn" disabled>Odeslat zprávu</button>
       <p class="muted small">Zprávu dostanou zákazníci s Android appkou a zapnutými notifikacemi.</p>
     </section>
   </div>`;
@@ -455,8 +464,9 @@ function readRewards() {
 function updatePromoBox() {
   const el = document.getElementById("promoBox"); if (!el) return;
   const p = activePromo(A.config);
-  el.innerHTML = p ? `<div class="promo running">${icon("sparkle")}<div><b>Běží: ${esc(p.label)} (${p.multiplier}×)</b><span>${esc(czechUntil(p.endsAt))}</span></div>
-    <button class="btn small danger" data-act="stopPromo">Ukončit</button></div>` : "";
+  el.innerHTML = p ? `<div class="promo running">${icon("sparkle")}<div><b>Běží: ${esc(p.label)} (${p.multiplier}×)</b><span>${esc(czechUntil(p.endsAt))}</span></div></div>
+    <button class="btn outline-red wide" data-act="stopPromo">Ukončit akci</button>` : "";
+  const form = document.getElementById("promoForm"); if (form) form.hidden = Boolean(p);
 }
 
 function endOf(k) {
@@ -473,11 +483,17 @@ let countSeq = 0;
 async function countRecipients() {
   const el = document.getElementById("recipients"); if (!el) return;
   const seq = ++countSeq;
-  el.textContent = "Počítám příjemce…";
+  el.textContent = "Počítám příjemce…"; L.recipients = null; updateSendBtn();
   try {
     const r = await call("adminBroadcast", { title: "", body: "", minRank: L.minRank, dryRun: true });
-    if (seq === countSeq) { L.recipients = r.recipients; el.textContent = `Zprávu dostane ${num(r.recipients)} zákazníků.`; }
-  } catch { if (seq === countSeq) { L.recipients = null; el.textContent = "Počet příjemců se nepodařilo zjistit."; } }
+    if (seq === countSeq) { L.recipients = r.recipients; el.textContent = `Zprávu dostane ${num(r.recipients)} zákazníků s appkou`; updateSendBtn(); }
+  } catch { if (seq === countSeq) { L.recipients = null; el.textContent = "Počet příjemců se nepodařilo zjistit"; updateSendBtn(); } }
+}
+/** Odeslat jde, až je nadpis, text i aspoň jeden příjemce. */
+function updateSendBtn() {
+  const b = document.getElementById("sendBtn"); if (!b) return;
+  const t = document.getElementById("bTitle")?.value.trim(), x = document.getElementById("bBody")?.value.trim();
+  b.disabled = !(t && x && (L.recipients ?? 0) > 0);
 }
 
 const chipsSelect = (el, attr) => el.parentElement.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === el));
@@ -526,7 +542,7 @@ const loyaltyActions = {
       try {
         const r = await call("adminBroadcast", { title, body, minRank: L.minRank, dryRun: false }, 120_000);
         toast(`Zpráva odeslána ${num(r.sent)} zákazníkům`);
-        document.getElementById("bTitle").value = ""; document.getElementById("bBody").value = "";
+        document.getElementById("bTitle").value = ""; document.getElementById("bBody").value = ""; updateSendBtn();
       } catch (e) { toast(errMsg(e), "error"); }
     }, "Odesílám…");
   },
@@ -536,15 +552,16 @@ const loyaltyActions = {
 // Naše zeleň
 // ════════════════════════════════════════════════════════════════════
 function productsHtml() {
-  return `<div class="pill admin">
-    ${back("Naše zeleň", "Správa produktů")}
-    <button class="btn gold wide" data-act="newProduct">${icon("plus")} Přidat produkt</button>
+  return `<div class="pill shopscreen">
+    ${shopHead(A.products.length, 'data-act="home"')}
     <div id="products"></div>
-  </div>`;
+  </div>
+  <button class="fab" data-act="newProduct" aria-label="Přidat produkt">${icon("plus")}</button>`;
 }
 function updateProducts() {
   const el = document.getElementById("products"); if (!el) return;
-  el.innerHTML = A.products.length ? productsByCategory(A.products, A.cat, { admin: true }) : `<p class="muted center">Zatím žádné produkty.</p>`;
+  el.innerHTML = productsByCategory(A.products, A.cat, { admin: true });
+  const pill = root.querySelector(".count-pill"); if (pill) pill.textContent = `${A.products.length} produktů`;
 }
 
 /** Zmenší fotku na max 1200 px a převede na JPEG (rychlé nahrání i z mobilu). */
@@ -566,22 +583,22 @@ function editProduct(p) {
   let file = null;
   const img = p.imageUrl || (p.imageName ? `/app/img/${p.imageName}.png` : "");
   const s = sheet(`
-    <h2>${isNew ? "Nový produkt" : "Upravit produkt"}</h2>
+    <h2>${isNew ? "Přidat produkt" : "Upravit produkt"}</h2>
     <div class="eyebrow">Obrázek</div>
     <label class="img-pick"><span id="imgPrev">${img ? `<img src="${esc(img)}" alt="">` : icon("camera")}</span>
-      <input type="file" accept="image/*" id="imgFile" hidden><b>Vybrat fotku</b></label>
+      <input type="file" accept="image/*" id="imgFile" hidden><span class="img-info"><small id="imgState" class="muted">${file ? "" : p.imageUrl ? "Stávající obrázek" : "Žádný obrázek"}</small><b>Vybrat z galerie</b></span></label>
     <label class="field"><span>Název</span><input id="pName" value="${esc(p.name)}"></label>
     <label class="field"><span>Popis</span><textarea id="pDesc" rows="4">${esc(p.description)}</textarea></label>
     <div class="eyebrow">Kategorie</div>
     <div class="chips" id="cats">${CATEGORIES.map((c) => `<button class="chip ${c === category ? "on" : ""}" data-act="pcat" data-cat="${esc(c)}">${esc(c)}</button>`).join("")}</div>
-    <div class="eyebrow">Dostupné formy (jen u konopí)</div>
+    <div class="eyebrow">Dostupné formy</div>
     <div class="chips" id="forms">${ALL_FORMS.map((f) => `<button class="chip ${forms.has(f) ? "on" : ""}" data-act="form" data-f="${esc(f)}">${esc(f)}</button>`).join("")}</div>
     <div class="dlg-actions">
       ${isNew ? "" : `<button class="btn ghost danger-text" data-act="del">${icon("trash")} Smazat</button>`}
       <button class="btn ghost" data-close>Zrušit</button><button class="btn primary" data-act="saveProduct">Uložit</button></div>`);
   s.body.querySelector("#imgFile").addEventListener("change", (e) => {
     file = e.target.files[0] || null;
-    if (file) s.body.querySelector("#imgPrev").innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`;
+    if (file) { s.body.querySelector("#imgPrev").innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`; s.body.querySelector("#imgState").textContent = "Nový obrázek vybrán ✓"; }
   });
   bindActions(s.el, {
     pcat: (el) => { category = el.dataset.cat; s.body.querySelectorAll("#cats .chip").forEach((c) => c.classList.toggle("on", c === el)); },
@@ -625,6 +642,7 @@ function editProduct(p) {
 // ════════════════════════════════════════════════════════════════════
 root.addEventListener("input", (e) => {
   if (e.target.id === "q") { A.query = e.target.value; updateList(); }
+  if (e.target.id === "bTitle" || e.target.id === "bBody") updateSendBtn();
 });
 
 root.addEventListener("submit", (e) => {
@@ -660,7 +678,7 @@ bindActions(root, {
   editProduct: (el) => editProduct(A.products.find((x) => x.id === el.dataset.id)),
   dismissHint,
   logout: async () => {
-    if (await confirmDialog({ title: "Odhlásit se?", text: "Pro další práci se budeš muset znovu přihlásit.", ok: "Odhlásit", danger: true })) signOut(auth);
+    if (await confirmDialog({ title: "Odhlásit obsluhu?", text: "Pro další práci se budeš muset znovu přihlásit.", ok: "Odhlásit", danger: true })) signOut(auth);
   },
 });
 
