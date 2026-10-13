@@ -63,13 +63,13 @@ function listen(userId) {
 
   unsubs.push(onSnapshot(
     query(collection(db, "users", userId, "transactions"), orderBy("createdAt", "desc"), limit(20)),
-    (snap) => { S.txs = snap.docs.map((d) => ({ id: d.id, ...d.data() })); render(); },
+    (snap) => { S.txs = snap.docs.map((d) => ({ ...d.data(), id: d.id })); render(); },
     () => {}
   ));
   unsubs.push(onSnapshot(doc(db, "config", "loyalty"), (snap) => { S.config = snap.data() || null; render(); }, () => {}));
   unsubs.push(onSnapshot(doc(db, "config", "rewards"), (snap) => { S.rewards = snap.data()?.items || null; render(); }, () => {}));
   unsubs.push(onSnapshot(query(collection(db, "products"), orderBy("orderIndex")), (snap) => {
-    S.products = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    S.products = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
     S.productsLoaded = true;
     prefetchProductImages(S.products);
     productsSheet?.update(productsHtml());

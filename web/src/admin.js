@@ -60,7 +60,7 @@ onAuthStateChanged(auth, async (u) => {
 function start() {
   if (unsubs.length) return;
   unsubs.push(onSnapshot(query(collection(db, "users"), orderBy("name")), (snap) => {
-    A.users = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    A.users = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
     if (A.view === "home") { updateStats(); updateList(); }
   }, (e) => toast(errMsg(e, "Zákazníky se nepodařilo načíst."), "error")));
   unsubs.push(onSnapshot(doc(db, "config", "loyalty"), (snap) => {
@@ -69,11 +69,11 @@ function start() {
   }, () => {}));
   unsubs.push(onSnapshot(doc(db, "config", "rewards"), (snap) => { A.rewards = snap.data()?.items || null; }, () => {}));
   unsubs.push(onSnapshot(collection(db, "deletionRequests"), (snap) => {
-    A.deletions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    A.deletions = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
     if (A.view === "home") updateDeletions();
   }, () => {}));
   unsubs.push(onSnapshot(query(collection(db, "products"), orderBy("orderIndex")), (snap) => {
-    A.products = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    A.products = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
     if (A.view === "products") updateProducts();
   }, () => {}));
 }
@@ -322,7 +322,7 @@ async function scan() {
   const found = (raw) => {
     if (done) return;
     const code = String(raw || "").replace(/\s/g, "");
-    const user = A.users.find((u) => u.memberCode === code) || (!code.includes("/") && A.users.find((u) => u.id === code));
+    const user = A.users.find((u) => String(u.memberCode || "") === code) || (!code.includes("/") && A.users.find((u) => u.id === code));
     if (!user) { toast("Zákazník nenalezen", "error"); return; }
     done = true; s.close(); openUser(user, { scanned: true });
   };
