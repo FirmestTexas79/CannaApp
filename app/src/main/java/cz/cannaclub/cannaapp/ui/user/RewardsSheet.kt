@@ -25,11 +25,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import cz.cannaclub.cannaapp.R
 import cz.cannaclub.cannaapp.model.LoyaltyConfig
 import cz.cannaclub.cannaapp.model.MemberRank
@@ -43,6 +46,7 @@ import cz.cannaclub.cannaapp.ui.theme.BorderSoft
 import cz.cannaclub.cannaapp.ui.theme.Brand
 import cz.cannaclub.cannaapp.ui.theme.CardDefault
 import cz.cannaclub.cannaapp.ui.theme.Forest
+import cz.cannaclub.cannaapp.ui.theme.Honey
 import cz.cannaclub.cannaapp.ui.theme.OnBrand
 import cz.cannaclub.cannaapp.ui.theme.Paper
 import cz.cannaclub.cannaapp.ui.theme.Sage
@@ -54,7 +58,9 @@ import cz.cannaclub.cannaapp.ui.theme.TextPrimary
 data class ShopItem(
     @DrawableRes val icon: Int,
     val name: String,
-    val pointsCost: Int
+    val pointsCost: Int,
+    /** Od jakého ranku se odměna odemkne. */
+    val rank: MemberRank = MemberRank.ZAKAZNIK
 )
 
 /** Ikona odměny podle klíče z config/rewards (stejné klíče jako ve webovém adminu). */
@@ -64,25 +70,42 @@ fun rewardIcon(key: String): Int = when (key) {
     "cube"    -> R.drawable.ic_cube
     "leaf"    -> R.drawable.ic_leaf
     "bag"     -> R.drawable.ic_bag
+    "sparkle" -> R.drawable.ic_sparkle
     else      -> R.drawable.ic_gift
 }
 
 // ── Výchozí ceník odměn (než ho obsluha upraví ve webovém adminu) ──
 val shopItems = listOf(
-    ShopItem(R.drawable.ic_gift, "Papírky dle výběru", 50),
-    ShopItem(R.drawable.ic_gift, "Zapalovač", 80),
-    ShopItem(R.drawable.ic_cube, "Drtička Bulldog", 150),
+    ShopItem(R.drawable.ic_gift, "Papírky dle výběru", 100),
+    ShopItem(R.drawable.ic_gift, "Zapalovač", 150),
+    ShopItem(R.drawable.ic_cube, "Drtička Bulldog", 300, MemberRank.BRONZOVY),
+    ShopItem(R.drawable.ic_leaf, "CBD čaj", 400, MemberRank.BRONZOVY),
+    ShopItem(R.drawable.ic_leaf, "CBD med", 550, MemberRank.STRIBRNY),
+    ShopItem(R.drawable.ic_bud, "1 g kytek dle výběru", 650, MemberRank.STRIBRNY),
+    ShopItem(R.drawable.ic_leaf, "CBD olej 10 %", 1400, MemberRank.ZLATY),
+    ShopItem(R.drawable.ic_bud, "3 g kytek dle výběru", 1800, MemberRank.ZLATY),
+    ShopItem(R.drawable.ic_bag, "Klobouk Bulldog", 2200, MemberRank.RODINA),
+    ShopItem(R.drawable.ic_leaf, "CBD olej 20 %", 3500, MemberRank.RODINA),
 )
 
-/** Ceník odměn: z config/rewards, jinak výchozí; seřazený od nejlevnější. */
+/** Celý ceník odměn: z config/rewards, jinak výchozí; seřazený od nejlevnější. */
 fun rewardList(loyalty: LoyaltyConfig): List<ShopItem> = loyalty.rewards
-    .map { ShopItem(rewardIcon(it.icon), it.name, it.cost) }
+    .map { r ->
+        ShopItem(rewardIcon(r.icon), r.name, r.cost,
+            MemberRank.entries.firstOrNull { it.name == r.rank } ?: MemberRank.ZAKAZNIK)
+    }
     .ifEmpty { shopItems }
     .sortedBy { it.pointsCost }
 
-/** Text pod body: kolik chybí do nejbližší odměny. */
-fun nextRewardText(points: Int, loyalty: LoyaltyConfig): String {
-    val list = rewardList(loyalty)
+/** Odměny, které už zákazník svým rankem odemkl. */
+fun unlockedRewards(loyalty: LoyaltyConfig, totalPoints: Int): List<ShopItem> {
+    val rank = MemberRank.forPoints(totalPoints)
+    return rewardList(loyalty).filter { it.rank.ordinal <= rank.ordinal }
+}
+
+/** Text pod body: kolik chybí do nejbližší odemčené odměny. */
+fun nextRewardText(points: Int, totalPoints: Int, loyalty: LoyaltyConfig): String {
+    val list = unlockedRewards(loyalty, totalPoints)
     val next = list.firstOrNull { it.pointsCost > points }
     val canTake = list.count { it.pointsCost <= points }
     return when {
@@ -105,6 +128,9 @@ fun RewardsSheet(
 ) {
     val currentRank = MemberRank.forPoints(totalPoints)
     val nextRank    = currentRank.next
+    val all         = rewardList(loyalty)
+    val unlocked    = all.filter { it.rank.ordinal <= currentRank.ordinal }
+    val locked      = all.filter { it.rank.ordinal > currentRank.ordinal }.groupBy { it.rank }.toSortedMap()
 
     Column(
         modifier = Modifier
@@ -134,8 +160,13 @@ fun RewardsSheet(
 
         Spacer(modifier = Modifier.height(18.dp))
 
+        // ── 1. Hlavní odměna ───────────────────────────────
+        loyalty.finale?.let { f ->
+            FinaleCard(name = f.name, cost = f.cost, points = currentPoints)
+            Spacer(modifier = Modifier.height(24.dp))
+        }
 
-        // ── 2. Nebo odměna z ceníku ───────────────────────
+        // ── 2. Odemčené odměny z ceníku ───────────────────
         SectionLabel("Za body si můžeš vzít")
         Spacer(modifier = Modifier.height(10.dp))
 
@@ -146,10 +177,16 @@ fun RewardsSheet(
                 .background(Paper)
                 .border(1.dp, BorderSoft, RoundedCornerShape(20.dp))
         ) {
-            rewardList(loyalty).forEachIndexed { i, item ->
+            unlocked.forEachIndexed { i, item ->
                 if (i > 0) HorizontalDivider(color = BorderSoft, modifier = Modifier.padding(start = 70.dp))
                 RewardRow(item = item, points = currentPoints)
             }
+            if (unlocked.isEmpty()) Text(
+                text     = "Zatím tu nic není.",
+                style    = MaterialTheme.typography.bodySmall,
+                color    = TextMuted,
+                modifier = Modifier.padding(16.dp)
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -172,9 +209,17 @@ fun RewardsSheet(
             )
         }
 
+        // ── 3. Zamčené odměny vyšších ranků (bez ceny) ────
+        if (locked.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(26.dp))
+            SectionLabel("Odemkneš s vyšším rankem")
+            Spacer(modifier = Modifier.height(10.dp))
+            LockedRewards(locked)
+        }
+
         Spacer(modifier = Modifier.height(30.dp))
 
-        // ── 3. Rank ───────────────────────────────────────
+        // ── 4. Rank ───────────────────────────────────────
         SectionLabel("Tvůj rank")
         Spacer(modifier = Modifier.height(10.dp))
 
@@ -238,7 +283,7 @@ fun RewardsSheet(
                     )
                     Text(
                         text  = buildString {
-                            append(if (rank.requiredPoints == 0) "Hned od registrace" else "od ${rank.requiredPoints} nasbíraných bodů")
+                            append(if (rank.requiredPoints == 0) "Hned od registrace" else "od ${formatPoints(rank.requiredPoints)} nasbíraných bodů")
                             val b = loyalty.bonusFor(rank)
                             if (b > 0) append(" · +$b % bodů")
                         },
@@ -359,3 +404,105 @@ private fun RankConnector(unlocked: Boolean) {
         )
     }
 }
+
+/** Hlavní odměna — tmavá karta se zlatým akcentem a postupem k ní. */
+@Composable
+private fun FinaleCard(name: String, cost: Int, points: Int) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(26.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF2E4526), Forest, Color(0xFF1B2A16))))
+            .drawBehind {
+                val glow = Offset(size.width, 0f)
+                drawCircle(
+                    brush  = Brush.radialGradient(listOf(Honey.copy(alpha = 0.35f), Color.Transparent), center = glow, radius = size.width * 0.75f),
+                    radius = size.width * 0.75f,
+                    center = glow
+                )
+            }
+            .padding(horizontal = 20.dp, vertical = 18.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CannaIcon(id = R.drawable.ic_sparkle, tint = Honey, size = 15.dp)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("HLAVNÍ ODMĚNA", style = MaterialTheme.typography.labelSmall, color = Honey)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(name, style = MaterialTheme.typography.headlineLarge, color = OnBrand)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text  = formatPoints(cost),
+                style = MaterialTheme.typography.displayMedium.copy(fontSize = 40.sp, lineHeight = 44.sp),
+                color = Honey
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("bodů", style = MaterialTheme.typography.bodyMedium, color = OnBrand.copy(alpha = 0.75f),
+                modifier = Modifier.padding(bottom = 6.dp))
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(OnBrand.copy(alpha = 0.16f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth((points.toFloat() / cost).coerceIn(0f, 1f))
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Honey)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text  = if (points >= cost) "Máš dost bodů, řekni si o ni na prodejně."
+                    else "Máš ${formatPoints(points)} b · chybí ${formatPoints(cost - points)} b",
+            style = MaterialTheme.typography.bodySmall,
+            color = OnBrand.copy(alpha = 0.85f)
+        )
+    }
+}
+
+/** Odměny vyšších ranků: vidí se název, cena až po získání ranku. */
+@Composable
+private fun LockedRewards(locked: Map<MemberRank, List<ShopItem>>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Paper)
+            .border(1.dp, BorderNormal, RoundedCornerShape(20.dp))
+            .padding(16.dp)
+    ) {
+        Text(
+            text  = "Každý rank ti odemkne nové odměny. Kolik bodů stojí, uvidíš, jakmile rank získáš.",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMuted
+        )
+        locked.forEach { (rank, items) ->
+            HorizontalDivider(color = BorderSoft, modifier = Modifier.padding(vertical = 12.dp))
+            Row(verticalAlignment = Alignment.Top) {
+                RankBadge(rank = rank, size = 34.dp)
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(rank.label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold), color = TextPrimary)
+                    Text("od ${formatPoints(rank.requiredPoints)} nasbíraných bodů", style = MaterialTheme.typography.bodySmall, color = TextFaint)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    items.forEach { item ->
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
+                            CannaIcon(id = R.drawable.ic_lock, tint = TextFaint, size = 14.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(item.name, style = MaterialTheme.typography.bodyMedium, color = TextMuted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 20000 → "20 000" */
+fun formatPoints(n: Int): String = "%,d".format(java.util.Locale.ROOT, n).replace(',', '\u00A0')

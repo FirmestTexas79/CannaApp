@@ -33,7 +33,7 @@ const BRAND_GREEN = "#3E5E35";
 const WOLT_URL = "https://wolt.com/cs/cze/hradec-kralove/venue/cannaclub-cannabis-cbd";
 
 // Ranky a jejich popis jsou společné s výpočtem bodů
-const { rankInfo } = require("./loyalty");
+const { rankInfo, getConfig } = require("./loyalty");
 
 const db = () => getFirestore();
 const projectId = () => process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
@@ -190,6 +190,7 @@ exports.walletPassJwt = onCall({ secrets: [WALLET_SA_KEY] }, async (request) => 
   const issuer = issuerId();
   try {
     await ensureClass(sa, issuer);
+    await getConfig();   // aktuální hranice ranků
     const id = await upsertObject(sa, issuer, { ...snap.data(), id: snap.id });
     await ref.update({ walletObjectId: id });
 
@@ -225,6 +226,7 @@ exports.syncWalletPass = onDocumentUpdated({ document: "users/{userId}", secrets
     const sa = serviceAccount();
     const issuer = issuerId();
     // Nový kód (převzatý z Dotykačky) = nový objekt; starý zůstane, dokud si ho zákazník neodebere
+    await getConfig();   // aktuální hranice ranků
     const id = await upsertObject(sa, issuer, after);
     if (id !== after.walletObjectId) await event.data.after.ref.update({ walletObjectId: id });
   } catch (e) {

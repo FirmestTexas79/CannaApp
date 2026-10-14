@@ -13,7 +13,9 @@ data class LoyaltyConfig(
     val rankBonus: Map<String, Int> = DEFAULT_RANK_BONUS,
     val promo: Promo? = null,
     /** Ceník odměn z config/rewards (upravuje obsluha ve webovém adminu); prázdný = výchozí. */
-    val rewards: List<Reward> = emptyList()
+    val rewards: List<Reward> = emptyList(),
+    /** Hlavní odměna; DEFAULT_FINALE, dokud ji obsluha nenastaví (null = vypnutá). */
+    val finale: Reward? = DEFAULT_FINALE
 ) {
     fun bonusFor(rank: MemberRank): Int = rankBonus[rank.name] ?: DEFAULT_RANK_BONUS[rank.name] ?: 0
 
@@ -22,6 +24,8 @@ data class LoyaltyConfig(
         promo?.takeIf { it.multiplier > 1 && now in it.startsAtMillis..it.endsAtMillis }
 
     companion object {
+        val DEFAULT_FINALE = Reward("Menší bong dle výběru", 20000, "sparkle")
+
         val DEFAULT_RANK_BONUS = mapOf(
             "ZAKAZNIK" to 0, "BRONZOVY" to 5, "STRIBRNY" to 10, "ZLATY" to 15, "RODINA" to 20
         )
@@ -45,7 +49,8 @@ data class LoyaltyConfig(
     }
 }
 
-data class Reward(val name: String, val cost: Int, val icon: String = "gift")
+/** Odměna za body; [rank] = od jakého ranku ji zákazník vidí a může si ji vzít (MemberRank.name). */
+data class Reward(val name: String, val cost: Int, val icon: String = "gift", val rank: String = "ZAKAZNIK")
 
 data class Promo(
     val multiplier: Int,

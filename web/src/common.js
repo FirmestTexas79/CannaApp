@@ -5,14 +5,24 @@ export const WOLT_URL = "https://wolt.com/cs/cze/hradec-kralove/venue/cannaclub-
 export const PRIVACY_URL = "/ochrana-udaju.html";
 export const EARN_KC_PER_POINT = 10;
 
-// ── Ranky — musí sedět s functions/loyalty.js a MemberRank v Android appce ──
+// ── Ranky — klíče a bonusy musí sedět s functions/loyalty.js a MemberRank v Android appce.
+//    Hranice ("from") jsou výchozí; obsluha je mění v adminu (config/rewards.rankFrom). ──
+export const DEFAULT_RANK_FROM = { BRONZOVY: 500, STRIBRNY: 1500, ZLATY: 4000, RODINA: 10000 };
 export const RANKS = [
   { key: "ZAKAZNIK", label: "Zákazník", from: 0, bonus: 0, color: "#7C9A5E" },
-  { key: "BRONZOVY", label: "Bronzový", from: 250, bonus: 5, color: "#A86B3C" },
-  { key: "STRIBRNY", label: "Stříbrný", from: 500, bonus: 10, color: "#8A9096" },
-  { key: "ZLATY", label: "Zlatý", from: 1000, bonus: 15, color: "#C39A2B" },
-  { key: "RODINA", label: "Rodina", from: 2500, bonus: 20, color: "#3E5E35" },
+  { key: "BRONZOVY", label: "Bronzový", from: 500, bonus: 5, color: "#A86B3C" },
+  { key: "STRIBRNY", label: "Stříbrný", from: 1500, bonus: 10, color: "#8A9096" },
+  { key: "ZLATY", label: "Zlatý", from: 4000, bonus: 15, color: "#C39A2B" },
+  { key: "RODINA", label: "Rodina", from: 10000, bonus: 20, color: "#3E5E35" },
 ];
+export const rankIndexOf = (key) => Math.max(0, RANKS.findIndex((r) => r.key === key));
+
+/** Hranice ranků z config/rewards (vzestupné, jinak výchozí). */
+export function applyRankScale(rankFrom) {
+  const want = RANKS.map((r) => (r.key === "ZAKAZNIK" ? 0 : Math.round(Number(rankFrom?.[r.key]) || DEFAULT_RANK_FROM[r.key])));
+  const ok = want.every((v, i) => i === 0 || v > want[i - 1]);
+  RANKS.forEach((r, i) => { r.from = ok ? want[i] : (i ? DEFAULT_RANK_FROM[r.key] : 0); });
+}
 
 export function rankFor(total = 0) {
   let i = 0;
@@ -106,11 +116,29 @@ export const shopHead = (count, backAttr = "data-close") => `<div class="shop-he
 export const REWARD_ICONS = ["preroll", "bud", "cube", "gift", "leaf", "bag"];
 
 // ── Výchozí ceník odměn, než ho obsluha upraví v adminu (config/rewards) ──
+//    rank = od jakého ranku se odměna odemkne
 export const SHOP_ITEMS = [
-  { icon: "gift", name: "Papírky dle výběru", cost: 50 },
-  { icon: "gift", name: "Zapalovač", cost: 80 },
-  { icon: "cube", name: "Drtička Bulldog", cost: 150 },
+  { icon: "gift", name: "Papírky dle výběru", cost: 100, rank: "ZAKAZNIK" },
+  { icon: "gift", name: "Zapalovač", cost: 150, rank: "ZAKAZNIK" },
+  { icon: "cube", name: "Drtička Bulldog", cost: 300, rank: "BRONZOVY" },
+  { icon: "leaf", name: "CBD čaj", cost: 400, rank: "BRONZOVY" },
+  { icon: "leaf", name: "CBD med", cost: 550, rank: "STRIBRNY" },
+  { icon: "bud", name: "1 g kytek dle výběru", cost: 650, rank: "STRIBRNY" },
+  { icon: "leaf", name: "CBD olej 10 %", cost: 1400, rank: "ZLATY" },
+  { icon: "bud", name: "3 g kytek dle výběru", cost: 1800, rank: "ZLATY" },
+  { icon: "bag", name: "Klobouk Bulldog", cost: 2200, rank: "RODINA" },
+  { icon: "leaf", name: "CBD olej 20 %", cost: 3500, rank: "RODINA" },
 ];
+export const DEFAULT_FINALE = { icon: "sparkle", name: "Menší bong dle výběru", cost: 20000 };
+
+/** Ceník z config/rewards: { items (seřazené), finale } — chybějící části doplní výchozí. */
+export function rewardsFrom(cfg) {
+  const items = (cfg?.items?.length ? cfg.items : SHOP_ITEMS)
+    .map((r) => ({ ...r, rank: RANKS.some((x) => x.key === r.rank) ? r.rank : "ZAKAZNIK" }))
+    .sort((a, b) => a.cost - b.cost);
+  const finale = cfg && "finale" in cfg ? cfg.finale : DEFAULT_FINALE;
+  return { items, finale: finale && finale.name && finale.cost > 0 ? finale : null };
+}
 
 // ── Text a čísla ──
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -196,6 +224,7 @@ const P = {
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   chevron: '<path d="M9 6l6 6-6 6"/>',
   back: '<path d="M15 6l-6 6 6 6"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
   tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>',
   trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',

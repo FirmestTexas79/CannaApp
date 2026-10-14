@@ -6,7 +6,7 @@ import { initFirebase } from "./fb.js";
 import { signInAnonymously, onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, onSnapshot, collection, query, orderBy, limit } from "firebase/firestore";
 import {
-  RANKS, SHOP_ITEMS, WOLT_URL, PRIVACY_URL, EARN_KC_PER_POINT,
+  RANKS, rewardsFrom, rankIndexOf, applyRankScale, WOLT_URL, PRIVACY_URL, EARN_KC_PER_POINT,
   esc, num, chunk4, initials, firstName, toMillis, dayLabel, timeLabel, czechUntil,
   rankFor, activePromo, errMsg, icon, toast, sheet, confirmDialog, bindActions, busy,
   barcodeSvg, productsByCategory, productDetailHtml, prefetchProductImages, installHint, dismissHint, keepAwake,
@@ -26,7 +26,7 @@ const S = {
   config: null,
   products: [],
   productsLoaded: false,
-  rewards: null,            // ceník odměn z config/rewards (null = výchozí)
+  rewards: null,            // config/rewards: { items, finale, rankFrom } (null = výchozí)
   cat: null,                // vybraná kategorie v nabídce
   draft: {},                // rozepsaný formulář při přepínání login/registrace
   hero: null,               // právě zobrazené body a postup ranku (kvůli animaci)
@@ -67,7 +67,11 @@ function listen(userId) {
     () => {}
   ));
   unsubs.push(onSnapshot(doc(db, "config", "loyalty"), (snap) => { S.config = snap.data() || null; render(); }, () => {}));
-  unsubs.push(onSnapshot(doc(db, "config", "rewards"), (snap) => { S.rewards = snap.data()?.items || null; render(); }, () => {}));
+  unsubs.push(onSnapshot(doc(db, "config", "rewards"), (snap) => {
+    S.rewards = snap.data() || null;
+    applyRankScale(S.rewards?.rankFrom);
+    render();
+  }, () => {}));
   unsubs.push(onSnapshot(query(collection(db, "products"), orderBy("orderIndex")), (snap) => {
     S.products = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
     S.productsLoaded = true;
@@ -309,30 +313,46 @@ async function showCard() {
 }
 
 // ── Odměny ──
-const rewardItems = () => [...(S.rewards?.length ? S.rewards : SHOP_ITEMS)].sort((a, b) => a.cost - b.cost);
+const rewardsCfg = () => rewardsFrom(S.rewards);
+function unlockedRewards() {
+  const idx = rankFor(S.user?.totalPoints || 0).index;
+  return rewardsCfg().items.filter((it) => rankIndexOf(it.rank) <= idx);
+}
 
 function rewardRow(pts) {
   return (it) => {
     const ok = pts >= it.cost;
     return `<div class="row"><span class="bubble ${ok ? "" : "off"}">${icon(it.icon)}</span>
-      <div class="row-text"><b>${esc(it.name)}</b><small>${it.cost} b</small></div>
+      <div class="row-text"><b>${esc(it.name)}</b><small>${num(it.cost)} b</small></div>
       ${ok ? `<span class="badge ok">${icon("check")} Můžeš si vzít</span>`
-        : `<div class="need"><small>chybí ${it.cost - pts} b</small><div class="bar dark thin"><i style="width:${Math.min(100, (pts / it.cost) * 100).toFixed(0)}%"></i></div></div>`}</div>`;
+        : `<div class="need"><small>chybí ${num(it.cost - pts)} b</small><div class="bar dark thin"><i style="width:${Math.min(100, (pts / it.cost) * 100).toFixed(0)}%"></i></div></div>`}</div>`;
   };
 }
 
 function showRewards() {
   const u = S.user, pts = u.points || 0, total = u.totalPoints || 0, rank = rankFor(total);
+  const { items, finale } = rewardsCfg();
+  const open = items.filter((it) => rankIndexOf(it.rank) <= rank.index);
+  const locked = items.filter((it) => rankIndexOf(it.rank) > rank.index);
+  const lockedRanks = RANKS.filter((r, i) => i > rank.index && locked.some((it) => it.rank === r.key));
   sheet(`
-    <div class="sheet-head"><h2>Odměny</h2><span class="pill-badge">Máš ${pts} b</span></div>
+    <div class="sheet-head"><h2>Odměny</h2><span class="pill-badge">Máš ${num(pts)} b</span></div>
+    ${finale ? finaleHtml(finale, pts) : ""}
     <div class="eyebrow">Za body si můžeš vzít</div>
-    <div class="list-card rewards">${rewardItems().map(rewardRow(pts)).join("")}</div>
+    <div class="list-card rewards">${open.map(rewardRow(pts)).join("") || `<p class="muted pad">Zatím tu nic není.</p>`}</div>
     <p class="note">${icon("info")} Jak uplatnit: řekni si u pokladny o odměnu a ukaž kartičku. Obsluha ti body odečte.</p>
+    ${lockedRanks.length ? `<div class="eyebrow wide">Odemkneš s vyšším rankem</div>
+      <div class="locked-card">
+        <p>Každý rank ti odemkne nové odměny. Kolik bodů stojí, uvidíš, jakmile rank získáš.</p>
+        ${lockedRanks.map((r) => `<div class="locked-rank">${rankBadge(r, { size: 34 })}
+          <div><b>${esc(r.label)}</b><small>od ${num(r.from)} nasbíraných bodů</small>
+          <ul>${locked.filter((it) => it.rank === r.key).map((it) => `<li>${icon("lock")}${esc(it.name)}</li>`).join("")}</ul></div></div>`).join("")}
+      </div>` : ""}
     <div class="eyebrow wide">Tvůj rank</div>
     <div class="rank-card">
       ${rankBadge(rank, { size: 52 })}
       <div class="row-text"><b class="serif">${esc(rank.label)}</b>
-        <small>${rank.bonus > 0 ? `+${rank.bonus} % bodů za každý nákup · celkem ${total} b` : `Celkem nasbíráno ${total} b`}</small>
+        <small>${rank.bonus > 0 ? `+${rank.bonus} % bodů za každý nákup · celkem ${num(total)} b` : `Celkem nasbíráno ${num(total)} b`}</small>
         <div class="bar dark"><i style="width:${(rank.progress * 100).toFixed(1)}%;background:${rank.color}"></i></div>
         <small class="faint">${rank.next ? `Do ranku ${esc(rank.next.label)} (+${rank.next.bonus} % bodů) chybí ${num(rank.missing)} b` : "Nejvyšší rank, patříš do rodiny"}</small></div>
     </div>
@@ -342,17 +362,28 @@ function showRewards() {
       const conn = i < RANKS.length - 1 ? `<div class="rp-conn ${total >= RANKS[i + 1].from ? "on" : ""}"><i></i></div>` : "";
       return `<div class="rp">${rankBadge(r, { size: 46, locked: !unlocked })}
         <div class="row-text"><b class="${current ? "cur" : ""} ${unlocked ? "" : "dim"}">${esc(r.label)}</b>
-          <small>${r.from === 0 ? "Hned od registrace" : `od ${r.from} nasbíraných bodů`}${r.bonus ? ` · +${r.bonus} % bodů` : ""}</small></div>
+          <small>${r.from === 0 ? "Hned od registrace" : `od ${num(r.from)} nasbíraných bodů`}${r.bonus ? ` · +${r.bonus} % bodů` : ""}</small></div>
         ${current ? `<span class="now" style="background:${r.color}">Teď</span>` : unlocked ? icon("check", "ok") : ""}</div>${conn}`;
     }).join("")}</div>
   `);
 }
 
+function finaleHtml(f, pts) {
+  const p = Math.min(1, pts / f.cost);
+  return `<section class="finale">
+    <span class="finale-tag">${icon("sparkle")} Hlavní odměna</span>
+    <h3>${esc(f.name)}</h3>
+    <div class="finale-cost">${num(f.cost)}<small>bodů</small></div>
+    <div class="bar"><i style="width:${(p * 100).toFixed(1)}%"></i></div>
+    <p>${pts >= f.cost ? "Máš dost bodů, řekni si o ni na prodejně." : `Máš ${num(pts)} b · chybí ${num(f.cost - pts)} b`}</p>
+  </section>`;
+}
+
 function nextRewardText(points) {
-  const list = rewardItems(), next = list.find((r) => r.cost > points), can = list.filter((r) => r.cost <= points).length;
+  const list = unlockedRewards(), next = list.find((r) => r.cost > points), can = list.filter((r) => r.cost <= points).length;
   if (!next) return can ? "Můžeš si vzít jakoukoli odměnu" : "Sbírej body za každý nákup";
-  if (can) return `Na ${can} ${can === 1 ? "odměnu" : can < 5 ? "odměny" : "odměn"} už máš · do další chybí ${next.cost - points} b`;
-  return `Do odměny „${next.name}“ chybí ${next.cost - points} b`;
+  if (can) return `Na ${can} ${can === 1 ? "odměnu" : can < 5 ? "odměny" : "odměn"} už máš · do další chybí ${num(next.cost - points)} b`;
+  return `Do odměny „${next.name}“ chybí ${num(next.cost - points)} b`;
 }
 
 // ── Nabídka ──

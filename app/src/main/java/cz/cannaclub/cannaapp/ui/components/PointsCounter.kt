@@ -117,7 +117,7 @@ fun PointsCard(
             }
 
             Text(
-                text  = cz.cannaclub.cannaapp.ui.user.nextRewardText(points, loyalty),
+                text  = cz.cannaclub.cannaapp.ui.user.nextRewardText(points, totalPoints, loyalty),
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                 color = OnBrand.copy(alpha = 0.9f)
             )

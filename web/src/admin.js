@@ -12,7 +12,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import {
   RANKS, esc, num, chunk4, initials, toMillis, rankFor, activePromo, czechUntil, errMsg, icon, toast, sheet,
   confirmDialog, bindActions, busy, barcodeSvg, productsByCategory, installHint, dismissHint,
-  CATEGORIES, categoryOf, SHOP_ITEMS, REWARD_ICONS, rankBadge, mountPlants, shopHead,
+  CATEGORIES, categoryOf, REWARD_ICONS, rewardsFrom, applyRankScale, rankBadge, mountPlants, shopHead,
 } from "./common.js";
 
 const { app, auth, db, call } = initFirebase("admin");
@@ -67,7 +67,11 @@ function start() {
     A.config = snap.data() || null;
     if (A.view === "loyalty") updatePromoBox();
   }, () => {}));
-  unsubs.push(onSnapshot(doc(db, "config", "rewards"), (snap) => { A.rewards = snap.data()?.items || null; }, () => {}));
+  unsubs.push(onSnapshot(doc(db, "config", "rewards"), (snap) => {
+    A.rewards = snap.data() || null;
+    applyRankScale(A.rewards?.rankFrom);
+    if (A.view === "home") updateList();
+  }, () => {}));
   unsubs.push(onSnapshot(collection(db, "deletionRequests"), (snap) => {
     A.deletions = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
     if (A.view === "home") updateDeletions();
@@ -423,10 +427,16 @@ function loyaltyHtml() {
     </section>
     <section class="panel">
       <h3>${icon("gift")} Odměny za body</h3>
-      <p class="muted">Co si zákazník může vzít za body. Zákazníci to hned uvidí v appce.</p>
+      <p class="muted">Co si zákazník může vzít za body a od jakého ranku. Odměny vyšších ranků zákazník vidí zamčené a bez ceny.</p>
       <div id="rewards" class="reward-edit"></div>
       <button class="btn ghost small" data-act="addReward">${icon("plus")} Přidat odměnu</button>
-      <button class="btn primary wide" data-act="saveRewards">Uložit odměny</button>
+      <div class="eyebrow">Hlavní odměna</div>
+      <div id="finale" class="reward-edit"></div>
+      <div class="eyebrow">Body potřebné na rank</div>
+      <p class="muted small">Počítají se všechny nasbírané body za celou dobu.</p>
+      <div id="rankFrom" class="rank-edit"></div>
+      <button class="btn primary wide" data-act="saveRewards">Uložit odměny a ranky</button>
+
     </section>
     <section class="panel">
       <h3>${icon("bell")} Zpráva zákazníkům</h3>
@@ -446,19 +456,39 @@ let rewardsDraft = null;
 
 function renderRewards() {
   const el = document.getElementById("rewards"); if (!el) return;
-  if (!rewardsDraft) rewardsDraft = (A.rewards?.length ? A.rewards : SHOP_ITEMS).map((r) => ({ ...r }));
-  el.innerHTML = rewardsDraft.map((r, i) => `<div class="reward-row" data-i="${i}">
+  if (!rewardsDraft) {
+    const { items, finale } = rewardsFrom(A.rewards);
+    rewardsDraft = {
+      items: items.map((r) => ({ ...r })),
+      finale: { name: finale?.name || "", cost: finale?.cost || 0, on: Boolean(finale) },
+      rankFrom: Object.fromEntries(RANKS.slice(1).map((r) => [r.key, r.from])),
+    };
+  }
+  const d = rewardsDraft;
+  el.innerHTML = d.items.map((r, i) => `<div class="reward-row" data-i="${i}">
     <select data-k="icon" aria-label="Ikona">${REWARD_ICONS.map((k) => `<option value="${k}" ${k === r.icon ? "selected" : ""}>${ICON_LABELS[k]}</option>`).join("")}</select>
     <input data-k="name" value="${esc(r.name)}" placeholder="Název odměny" maxlength="40">
-    <input data-k="cost" type="number" inputmode="numeric" min="1" value="${Number(r.cost) || ""}" placeholder="bodů">
-    <button class="icon-btn" data-act="delReward" data-i="${i}" aria-label="Odebrat">${icon("close")}</button></div>`).join("")
+    <button class="icon-btn" data-act="delReward" data-i="${i}" aria-label="Odebrat">${icon("close")}</button>
+    <select data-k="rank" aria-label="Od ranku">${RANKS.map((x) => `<option value="${x.key}" ${x.key === r.rank ? "selected" : ""}>od ranku ${x.label}</option>`).join("")}</select>
+    <input data-k="cost" type="number" inputmode="numeric" min="1" value="${Number(r.cost) || ""}" placeholder="bodů"></div>`).join("")
     || `<p class="muted small">Žádné odměny – přidej aspoň jednu.</p>`;
+  document.getElementById("finale").innerHTML = `
+    <label class="switch"><input type="checkbox" id="finaleOn" ${d.finale.on ? "checked" : ""}><span>Ukazovat zákazníkům hlavní odměnu</span></label>
+    <div class="finale-row"><input id="finaleName" value="${esc(d.finale.name)}" placeholder="Např. Menší bong dle výběru" maxlength="40">
+      <input id="finaleCost" type="number" inputmode="numeric" min="1" value="${d.finale.cost || ""}" placeholder="bodů"></div>`;
+  document.getElementById("rankFrom").innerHTML = RANKS.slice(1).map((r) => `<label class="rank-in">
+    <span><i class="rank-dot" style="background:${r.color}"></i>${esc(r.label)}</span>
+    <input data-rank="${r.key}" type="number" inputmode="numeric" min="1" value="${d.rankFrom[r.key]}"><small>b</small></label>`).join("");
 }
 function readRewards() {
+  const d = rewardsDraft;
   document.querySelectorAll("#rewards .reward-row").forEach((row) => {
-    const r = rewardsDraft[Number(row.dataset.i)];
+    const r = d.items[Number(row.dataset.i)];
     row.querySelectorAll("[data-k]").forEach((f) => { r[f.dataset.k] = f.dataset.k === "cost" ? Math.round(Number(f.value) || 0) : f.value.trim(); });
   });
+  const on = document.getElementById("finaleOn"); if (!on) return;
+  d.finale = { on: on.checked, name: document.getElementById("finaleName").value.trim(), cost: Math.round(Number(document.getElementById("finaleCost").value) || 0) };
+  document.querySelectorAll("#rankFrom [data-rank]").forEach((f) => { d.rankFrom[f.dataset.rank] = Math.round(Number(f.value) || 0); });
 }
 
 function updatePromoBox() {
@@ -499,15 +529,26 @@ function updateSendBtn() {
 const chipsSelect = (el, attr) => el.parentElement.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c === el));
 
 const loyaltyActions = {
-  addReward: () => { readRewards(); rewardsDraft.push({ icon: "gift", name: "", cost: 0 }); renderRewards(); },
-  delReward: (el) => { readRewards(); rewardsDraft.splice(Number(el.dataset.i), 1); renderRewards(); },
+  addReward: () => { readRewards(); rewardsDraft.items.push({ icon: "gift", name: "", cost: 0, rank: "ZAKAZNIK" }); renderRewards(); },
+  delReward: (el) => { readRewards(); rewardsDraft.items.splice(Number(el.dataset.i), 1); renderRewards(); },
   saveRewards: (btn) => {
     readRewards();
-    const items = rewardsDraft.filter((r) => r.name && r.cost > 0).map(({ icon, name, cost }) => ({ icon, name, cost }));
-    if (items.length !== rewardsDraft.length) return toast("Každá odměna potřebuje název a počet bodů.", "error");
+    const d = rewardsDraft;
+    const items = d.items.filter((r) => r.name && r.cost > 0).map(({ icon, name, cost, rank }) => ({ icon, name, cost, rank }));
+    if (items.length !== d.items.length) return toast("Každá odměna potřebuje název a počet bodů.", "error");
+    if (d.finale.on && !(d.finale.name && d.finale.cost > 0)) return toast("Hlavní odměna potřebuje název a počet bodů.", "error");
+    const steps = RANKS.slice(1).map((r) => d.rankFrom[r.key]);
+    if (steps.some((v, i) => !(v > 0) || (i && v <= steps[i - 1]))) return toast("Body na ranky musí od Bronzového po Rodinu stoupat.", "error");
     busy(btn, async () => {
-      try { await setDoc(doc(db, "config", "rewards"), { items, updatedAt: Timestamp.now() }); toast("Odměny uloženy, zákazníci je hned uvidí"); }
-      catch (e) { toast(errMsg(e), "error"); }
+      try {
+        await setDoc(doc(db, "config", "rewards"), {
+          items,
+          finale: d.finale.on ? { icon: "sparkle", name: d.finale.name, cost: d.finale.cost } : null,
+          rankFrom: { ...d.rankFrom },
+          updatedAt: Timestamp.now(),
+        });
+        toast("Uloženo, zákazníci změny hned uvidí");
+      } catch (e) { toast(errMsg(e), "error"); }
     }, "Ukládám…");
   },
   mult: (el) => {

@@ -42,13 +42,17 @@ data class User(
 enum class MemberRank(
     val label: String,
     val icon: String,
-    val requiredPoints: Int
+    private val defaultPoints: Int
 ) {
     ZAKAZNIK("Zákazník",  "🌱", 0),
-    BRONZOVY("Bronzový",  "🥉", 250),
-    STRIBRNY("Stříbrný",  "🥈", 500),
-    ZLATY   ("Zlatý",     "🥇", 1000),
-    RODINA  ("Rodina",    "💚", 2500);
+    BRONZOVY("Bronzový",  "🥉", 500),
+    STRIBRNY("Stříbrný",  "🥈", 1500),
+    ZLATY   ("Zlatý",     "🥇", 4000),
+    RODINA  ("Rodina",    "💚", 10000);
+
+    /** Body (za celou dobu) potřebné na rank — z config/rewards.rankFrom, jinak výchozí. */
+    val requiredPoints: Int
+        get() = RankScale.from[name] ?: defaultPoints
 
     /** Následující rank, nebo null u nejvyššího. */
     val next: MemberRank?
@@ -63,5 +67,21 @@ enum class MemberRank(
     companion object {
         fun forPoints(totalPoints: Int): MemberRank =
             entries.last { totalPoints >= it.requiredPoints }
+    }
+}
+
+/**
+ * Hranice ranků nastavené obsluhou v adminu (config/rewards.rankFrom).
+ * Stavová mapa → Compose se při změně sám překreslí.
+ */
+object RankScale {
+    val from = androidx.compose.runtime.mutableStateMapOf<String, Int>()
+
+    fun apply(rankFrom: Map<String, Int>) {
+        val steps = MemberRank.entries.drop(1).map { rankFrom[it.name] ?: 0 }
+        from.clear()
+        if (steps.all { it > 0 } && steps.zipWithNext().all { (a, b) -> b > a }) {
+            MemberRank.entries.drop(1).forEachIndexed { i, r -> from[r.name] = steps[i] }
+        }
     }
 }

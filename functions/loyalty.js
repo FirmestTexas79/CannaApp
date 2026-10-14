@@ -19,14 +19,23 @@ const { getMessaging } = require("firebase-admin/messaging");
 
 const db = () => getFirestore();
 
-// Ranky — musí sedět s MemberRank v appce (model/User.kt)
+// Ranky — klíče musí sedět s MemberRank v appce (model/User.kt).
+// Hranice jsou výchozí; obsluha je mění v adminu → config/rewards.rankFrom (načte getConfig).
+const DEFAULT_RANK_FROM = { BRONZOVY: 500, STRIBRNY: 1500, ZLATY: 4000, RODINA: 10000 };
 const RANKS = [
   { key: "ZAKAZNIK", label: "Zákazník", from: 0 },
-  { key: "BRONZOVY", label: "Bronzový", from: 250 },
-  { key: "STRIBRNY", label: "Stříbrný", from: 500 },
-  { key: "ZLATY", label: "Zlatý", from: 1000 },
-  { key: "RODINA", label: "Rodina", from: 2500 },
+  { key: "BRONZOVY", label: "Bronzový", from: 500 },
+  { key: "STRIBRNY", label: "Stříbrný", from: 1500 },
+  { key: "ZLATY", label: "Zlatý", from: 4000 },
+  { key: "RODINA", label: "Rodina", from: 10000 },
 ];
+
+/** Hranice z configu (musí vzestupně stoupat, jinak výchozí). */
+function applyRankScale(rankFrom) {
+  const want = RANKS.map((r) => (r.key === "ZAKAZNIK" ? 0 : Math.round(Number(rankFrom && rankFrom[r.key]) || DEFAULT_RANK_FROM[r.key])));
+  const ok = want.every((v, i) => i === 0 || v > want[i - 1]);
+  RANKS.forEach((r, i) => { r.from = ok ? want[i] : (i ? DEFAULT_RANK_FROM[r.key] : 0); });
+}
 
 // Bonus za rank v % — musí sedět s LoyaltyConfig.DEFAULT_RANK_BONUS v appce
 const RANK_BONUS = { ZAKAZNIK: 0, BRONZOVY: 5, STRIBRNY: 10, ZLATY: 15, RODINA: 20 };
@@ -55,8 +64,9 @@ let cache = { value: null, until: 0 };
 
 async function getConfig() {
   if (cache.value && Date.now() < cache.until) return cache.value;
-  const snap = await configRef().get();
+  const [snap, rewards] = await Promise.all([configRef().get(), db().collection("config").doc("rewards").get()]);
   const d = snap.exists ? snap.data() : {};
+  applyRankScale(rewards.exists ? rewards.get("rankFrom") : null);
   const value = {
     rankBonus: RANK_BONUS,
     promo: d.promo || null, // { multiplier, label, startsAt, endsAt }
@@ -161,6 +171,7 @@ function formatEnd(millis) {
 //   { title, body, minRank: 0..4, dryRun }  → { recipients, sent }
 // ════════════════════════════════════════════════════════════════════
 async function recipients(minRank) {
+  await getConfig();
   const from = RANKS[Math.max(0, Math.min(RANKS.length - 1, minRank || 0))].from;
   const col = db().collection("users");
   // Všichni = bez filtru (i starší účty bez pole totalPoints)

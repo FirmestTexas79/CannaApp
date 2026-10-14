@@ -22,7 +22,8 @@ class LoyaltyRepository(
     fun configFlow(): Flow<LoyaltyConfig> = callbackFlow {
         var cfg = LoyaltyConfig()
         var rewards = emptyList<cz.cannaclub.cannaapp.model.Reward>()
-        fun emit() { trySend(cfg.copy(rewards = rewards)) }
+        var finale: cz.cannaclub.cannaapp.model.Reward? = LoyaltyConfig.DEFAULT_FINALE
+        fun emit() { trySend(cfg.copy(rewards = rewards, finale = finale)) }
         val reg = db.collection("config").document("loyalty")
             .addSnapshotListener { snap, error ->
                 if (error != null) android.util.Log.w("Loyalty", "config/loyalty nejde číst", error)
@@ -31,12 +32,20 @@ class LoyaltyRepository(
             }
         val regRewards = db.collection("config").document("rewards")
             .addSnapshotListener { snap, _ ->
-                @Suppress("UNCHECKED_CAST")
-                rewards = (snap?.get("items") as? List<Map<String, Any?>>).orEmpty().mapNotNull { m ->
-                    val name = m["name"] as? String ?: return@mapNotNull null
-                    val cost = (m["cost"] as? Number)?.toInt() ?: return@mapNotNull null
-                    cz.cannaclub.cannaapp.model.Reward(name, cost, m["icon"] as? String ?: "gift")
+                fun reward(map: Map<*, *>?): cz.cannaclub.cannaapp.model.Reward? {
+                    val m = map ?: return null
+                    val name = m["name"] as? String ?: return null
+                    val cost = (m["cost"] as? Number)?.toInt()?.takeIf { it > 0 } ?: return null
+                    return cz.cannaclub.cannaapp.model.Reward(
+                        name, cost, m["icon"] as? String ?: "gift", m["rank"] as? String ?: "ZAKAZNIK"
+                    )
                 }
+                rewards = (snap?.get("items") as? List<*>).orEmpty().mapNotNull { reward(it as? Map<*, *>) }
+                finale = if (snap?.contains("finale") == true) reward(snap?.get("finale") as? Map<*, *>)
+                         else LoyaltyConfig.DEFAULT_FINALE
+                val rankFrom = (snap?.get("rankFrom") as? Map<*, *>).orEmpty()
+                    .mapNotNull { (k, v) -> (k as? String)?.let { key -> (v as? Number)?.toInt()?.let { key to it } } }.toMap()
+                cz.cannaclub.cannaapp.model.RankScale.apply(rankFrom)
                 emit()
             }
         awaitClose { reg.remove(); regRewards.remove() }
