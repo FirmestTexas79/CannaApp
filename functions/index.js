@@ -251,6 +251,55 @@ async function setCustomerPoints(customerId, points) {
   await patchCustomer(customerId, { points: Math.max(0, Number(points) || 0) });
 }
 
+/** Body z appky do Dotykačky + zapamatovat, co v Dotykačce je (dotykackaPoints = poslední známý stav pokladny). */
+async function pushPoints(userRef, customerId, points) {
+  const p = Math.max(0, Math.round(Number(points) || 0));
+  await setCustomerPoints(customerId, p);
+  await userRef.update({ dotykackaPoints: p });
+}
+
+/**
+ * Body upravené přímo na pokladně → do appky.
+ * dotykackaPoints = stav pokladny při posledním zápisu/čtení. Liší-li se pokladna od něj,
+ * změnil to někdo v Dotykačce a rozdíl se připíše/odečte v appce (s pohybem v historii).
+ * Pokladna = appka → jen se posune výchozí stav (náš vlastní zápis).
+ */
+async function pullPosPoints() {
+  const customers = await listAllCustomers();
+  const posPoints = new Map(customers.map((c) => [String(c.id), Math.max(0, Math.round(Number(c.points) || 0))]));
+  const users = await db.collection("users").where("dotykackaSynced", "==", true).get();
+  let changed = 0;
+  for (const d of users.docs) {
+    const pos = posPoints.get(String(d.get("dotykackaId")));
+    if (pos === undefined) continue;
+    const app = Number(d.get("points") || 0);
+    const base = d.get("dotykackaPoints");
+    if (pos === app) { if (base !== pos) await d.ref.update({ dotykackaPoints: pos }); continue; }
+    if (typeof base !== "number") { await pushPoints(d.ref, d.get("dotykackaId"), app); continue; }   // první běh: platí appka
+    if (pos === base) continue;   // změna v appce, zápis do pokladny teprve poběží
+    const applied = await db.runTransaction(async (tx) => {
+      const u = await tx.get(d.ref);
+      if (u.get("dotykackaPoints") !== base) return false;   // mezitím se něco změnilo, zkusí se příště
+      const cur = Number(u.get("points") || 0);
+      const next = Math.max(0, cur + pos - base);
+      const upd = { points: next, dotykackaPoints: pos };
+      if (next > cur) upd.totalPoints = FieldValue.increment(next - cur);
+      tx.update(d.ref, upd);
+      if (next !== cur) {
+        const txRef = d.ref.collection("transactions").doc();
+        tx.set(txRef, {
+          id: txRef.id, type: next > cur ? "ADD" : "SUBTRACT", amount: Math.abs(next - cur),
+          reason: next > cur ? "Připsáno na pokladně" : "Uplatněno na pokladně",
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+      return true;
+    });
+    if (applied) changed++;
+  }
+  if (changed) logger.info(`Body upravené na pokladně převzaty u ${changed} zákazníků.`);
+}
+
 async function getCustomerById(id) {
   const c = await api(`/customers/${id}`, { allow404: true });
   return c && !c.deleted ? c : null;
@@ -300,8 +349,8 @@ async function syncUser(userId) {
     dotykackaSyncError: FieldValue.delete(),
     dotykackaSyncFailures: FieldValue.delete(),
   });
-  if (Number(customer.points || 0) !== Number(user.points || 0)) {
-    await setCustomerPoints(customer.id, user.points).catch((e) =>
+  if (Number(customer.points || 0) !== Number(user.points || 0) || user.dotykackaPoints === undefined) {
+    await pushPoints(ref, customer.id, user.points).catch((e) =>
       logger.warn("Body do Dotykačky nešly zapsat", { userId, error: e.message }));
   }
   return String(customer.id);
@@ -542,6 +591,7 @@ exports.syncDotykackaOrders = onSchedule(
 
     await syncPendingCustomers(stateRef, state.get("customersBackfilled") === true);
     if (state.get("pointsMirrored") !== true) await mirrorAllPoints(stateRef);
+    try { await pullPosPoints(); } catch (e) { logger.error("Body z Dotykačky nešly načíst", { error: e.message }); }
 
     // Projdeme účty za poslední 2 dny (po stránkách): zachytí to i výpadek synchronizace
     // a stornované účty, za které už body byly připsány.
@@ -579,7 +629,7 @@ async function mirrorAllPoints(stateRef) {
   for (const d of snap.docs) {
     const id = d.get("dotykackaId");
     if (!id) continue;
-    try { await setCustomerPoints(id, d.get("points")); ok++; }
+    try { await pushPoints(d.ref, id, d.get("points")); ok++; }
     catch (e) { logger.warn("Body do Dotykačky nešly zapsat", { userId: d.id, error: e.message }); }
   }
   await stateRef.set({ pointsMirrored: true }, { merge: true });
@@ -739,7 +789,7 @@ exports.mirrorPointsToDotykacka = onDocumentUpdated(
     const before = event.data.before, after = event.data.after;
     const id = after.get("dotykackaId");
     if (!id || before.get("points") === after.get("points") && before.get("dotykackaId") === id) return;
-    try { await setCustomerPoints(id, after.get("points")); }
+    try { await pushPoints(after.ref, id, after.get("points")); }
     catch (e) { logger.error("Body do Dotykačky nešly zapsat", { userId: event.params.userId, error: e.message }); }
   }
 );
